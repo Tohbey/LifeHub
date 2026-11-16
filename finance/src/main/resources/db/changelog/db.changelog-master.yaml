@@ -1,0 +1,6 @@
+# finance schema (lifehub_finance). Append new files at the end; never edit an applied one.
+databaseChangeLog:
+  - include:
+      file: db/changelog/lifehub-starter/outbox.sql
+  - include:
+      file: db/changelog/changes/0001-initial-schema.sql

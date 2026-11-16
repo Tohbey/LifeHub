@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Income, expenses, categories, shared expenses with splits, and monthly budgets. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.lifehub</groupId>
+        <artifactId>lifehub-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../lifehub-parent</relativePath>
+    </parent>
+
+    <artifactId>finance</artifactId>
+    <name>finance</name>
+
+    <!-- Shared dependencies come from lifehub-starter and lifehub-starter-test only. -->
+    <dependencies>
+        <dependency>
+            <groupId>com.lifehub</groupId>
+            <artifactId>lifehub-starter</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.lifehub</groupId>
+            <artifactId>lifehub-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

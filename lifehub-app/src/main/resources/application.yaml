@@ -1,0 +1,106 @@
+spring:
+  application:
+    name: lifehub-app
+  cloud:
+    gateway:
+      server:
+        webflux:
+          # Which service owns which public path. The lowest order wins, so more specific paths come first
+          # (/api/v1/me/notifications before /api/v1/me). /internal/** has no route: it is never exposed.
+          # "/**" also matches the path itself, so /api/v1/me/** covers /api/v1/me.
+          # lb://<name> looks the service up in lifehub-service-registry by its spring.application.name.
+          # A service with no registered instance answers 503.
+          routes:
+            - id: notification
+              uri: lb://notification
+              order: 0
+              predicates:
+                - Path=/api/v1/me/notifications/**,/api/v1/me/notification-preferences/**
+
+            - id: identity-workspace
+              uri: lb://identity-workspace
+              order: 1
+              predicates:
+                - Path=/api/v1/me/**,/api/v1/households/**,/api/v1/invitations/**
+
+            - id: finance
+              uri: lb://finance
+              order: 2
+              predicates:
+                - Path=/api/v1/workspaces/*/transactions/**,/api/v1/workspaces/*/budgets/**,/api/v1/workspaces/*/savings-goals/**,/api/v1/workspaces/*/finance/**
+
+            - id: planner
+              uri: lb://planner
+              order: 3
+              predicates:
+                - Path=/api/v1/workspaces/*/tasks/**,/api/v1/workspaces/*/events/**
+
+            - id: shopping-meals
+              uri: lb://shopping-meals
+              order: 4
+              predicates:
+                - Path=/api/v1/workspaces/*/shopping-lists/**,/api/v1/shopping-lists/**,/api/v1/shopping-items/**,/api/v1/workspaces/*/meals/**,/api/v1/workspaces/*/recipes/**
+
+            - id: document-inventory
+              uri: lb://document-inventory
+              order: 5
+              predicates:
+                - Path=/api/v1/workspaces/*/documents/**,/api/v1/workspaces/*/inventory/**,/api/v1/documents/**
+
+            - id: notes
+              uri: lb://notes
+              order: 6
+              predicates:
+                - Path=/api/v1/workspaces/*/notes/**,/api/v1/workspaces/*/tags/**,/api/v1/workspaces/*/bookmarks/**
+
+            - id: audit
+              uri: lb://audit
+              order: 7
+              predicates:
+                - Path=/api/v1/workspaces/*/audit/**
+
+            # API docs for Swagger UI: /openapi/<service> serves that service's public group (/api/** only).
+            # The internal group is never routed. Add one route per service, plus an entry under springdoc below.
+            - id: openapi-identity-workspace
+              uri: lb://identity-workspace
+              order: 100
+              predicates:
+                - Path=/openapi/identity-workspace
+              filters:
+                - SetPath=/v3/api-docs/public
+
+server:
+  port: 8089
+
+# Swagger UI at /swagger-ui.html, with one entry per service. Calls made from it go through the gateway
+# and need a Logto user token (Authorize button). Turn off with SPRINGDOC_SWAGGER_UI_ENABLED=false.
+springdoc:
+  swagger-ui:
+    urls:
+      - name: identity-workspace
+        url: /openapi/identity-workspace
+
+lifehub:
+  security:
+    issuer: https://auth.homelab.dev/oidc
+    audience: https://api.lifehub.homelab.dev
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    # Refresh the local copy of the registry often, so new instances get traffic quickly.
+    registry-fetch-interval-seconds: 10
+  instance:
+    # Register the container's IP: Docker hostnames are container IDs, which other containers cannot resolve.
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true

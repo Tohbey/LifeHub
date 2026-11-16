@@ -1,0 +1,5 @@
+com.lifehub.starter.security.LifehubSecurityAutoConfiguration
+com.lifehub.starter.membership.MembershipAutoConfiguration
+com.lifehub.starter.events.EventsAutoConfiguration
+com.lifehub.starter.web.WebAutoConfiguration
+com.lifehub.starter.web.OpenApiAutoConfiguration
