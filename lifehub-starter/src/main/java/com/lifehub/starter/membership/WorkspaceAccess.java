@@ -49,6 +49,15 @@ public class WorkspaceAccess {
         }
     }
 
+    /**
+     * The LifeHub user ID of the caller, for endpoints about the caller rather than a workspace. Fails with
+     * 404 if the user has never signed in to LifeHub (identity-workspace creates users on first sign-in).
+     */
+    public UUID currentUserId() {
+        return membershipClient.findUserIdBySubject(currentSubject())
+                .orElseThrow(() -> ApiException.notFound("User not found. Sign in to LifeHub first."));
+    }
+
     /** The Logto subject of the user making the current request. */
     public static String currentSubject() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

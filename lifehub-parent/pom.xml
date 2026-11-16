@@ -27,6 +27,7 @@
         <java-uuid-generator.version>5.2.0</java-uuid-generator.version>
         <resilience4j.version>2.4.0</resilience4j.version>
         <springdoc.version>3.0.3</springdoc.version>
+        <therapi.version>0.15.0</therapi.version>
     </properties>
 
     <dependencyManagement>
@@ -59,6 +60,12 @@
                 <groupId>io.github.resilience4j</groupId>
                 <artifactId>resilience4j-circuitbreaker</artifactId>
                 <version>${resilience4j.version}</version>
+            </dependency>
+            <!-- Lets springdoc use controllers' Javadoc as the Swagger descriptions (see the compiler plugin). -->
+            <dependency>
+                <groupId>com.github.therapi</groupId>
+                <artifactId>therapi-runtime-javadoc</artifactId>
+                <version>${therapi.version}</version>
             </dependency>
             <!-- OpenAPI docs and Swagger UI: webmvc for the services, webflux for lifehub-app. -->
             <dependency>
@@ -96,9 +103,16 @@
                             <artifactId>lombok</artifactId>
                             <version>${lombok.version}</version>
                         </path>
+                        <!-- Keeps Javadoc of LifeHub classes in the jar, so Swagger shows it. -->
+                        <path>
+                            <groupId>com.github.therapi</groupId>
+                            <artifactId>therapi-runtime-javadoc-scribe</artifactId>
+                            <version>${therapi.version}</version>
+                        </path>
                     </annotationProcessorPaths>
                     <compilerArgs>
                         <arg>-Xlint:all,-processing,-serial</arg>
+                        <arg>-Ajavadoc.packages=com.lifehub</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>

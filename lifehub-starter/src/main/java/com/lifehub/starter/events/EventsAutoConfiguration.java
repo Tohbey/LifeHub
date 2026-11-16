@@ -64,6 +64,13 @@ public class EventsAutoConfiguration {
         /** Topic retention is 14 days, so no duplicate can arrive after that. */
         private static final Duration PROCESSED_EVENTS_RETENTION = Duration.ofDays(15);
 
+        /** Provides the parser consumers use to read event envelopes from Kafka records. */
+        @Bean
+        @ConditionalOnMissingBean
+        EventReader eventReader(JsonMapper jsonMapper) {
+            return new EventReader(jsonMapper);
+        }
+
         /** Provides the duplicate check consumers call before handling an event. */
         @Bean
         @ConditionalOnMissingBean
@@ -85,8 +92,12 @@ public class EventsAutoConfiguration {
             return new DefaultErrorHandler(recoverer, backOff);
         }
 
-        /** Provides the nightly cleanup of old processed-event records. */
+        /**
+         * Provides the nightly cleanup of old processed-event records. Off with
+         * {@code lifehub.events.consumer.cleanup-enabled=false} for consumers without that table (audit).
+         */
         @Bean
+        @ConditionalOnProperty(name = "lifehub.events.consumer.cleanup-enabled", havingValue = "true", matchIfMissing = true)
         ProcessedEventsCleanup processedEventsCleanup(ProcessedEvents processedEvents) {
             return new ProcessedEventsCleanup(processedEvents);
         }

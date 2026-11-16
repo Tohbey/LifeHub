@@ -11,6 +11,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.lifehub.identityworkspace.model.entity.MemberStatus;
 import com.lifehub.identityworkspace.model.entity.WorkspaceMember;
+import com.lifehub.identityworkspace.model.entity.User;
+import com.lifehub.identityworkspace.repository.UserRepository;
 import com.lifehub.identityworkspace.repository.WorkspaceMemberRepository;
 import com.lifehub.starter.membership.Membership;
 import com.lifehub.starter.membership.MembershipClient;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class LocalMembershipClient implements MembershipClient {
 
     private final WorkspaceMemberRepository members;
+    private final UserRepository users;
 
     /** Looks up the subject's active membership directly in this service's tables. */
     @Override
@@ -45,5 +48,12 @@ public class LocalMembershipClient implements MembershipClient {
         }
         return members.findByWorkspaceIdAndStatusAndUserIdIn(workspaceId, MemberStatus.ACTIVE, userIds).stream()
                 .collect(Collectors.toMap(WorkspaceMember::getUserId, WorkspaceMember::getRole));
+    }
+
+    /** Looks the user up by Logto subject. Never provisions: that only happens on the user's own request. */
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UUID> findUserIdBySubject(String logtoSubject) {
+        return users.findByLogtoSubject(logtoSubject).map(User::getId);
     }
 }

@@ -61,12 +61,11 @@ Every event uses this envelope, defined once in `lifehub-starter`:
 | `calendar.events` | planner | 3 | 14 days |
 | `shopping.events` | shopping-meals | 3 | 14 days |
 | `document.events` | document-inventory | 3 | 14 days |
-| `<topic>.retry` | consumers | 1 | 7 days |
 | `<topic>.dlt` | consumers | 1 | 30 days |
 
 Partition counts and retention are starting values for a single broker, set by the topic script in `deploy/kafka/`. Kafka is not the source of truth ([README, backups](../../README.md#backups)), so retention only needs to cover consumer downtime and replay.
 
-Consumer group IDs are the consuming service's name, for example `notification` and `audit`.
+Consumer group IDs are the consuming service's name, for example `notification` and `audit`. A record a consumer cannot handle is retried in place with backoff (about 30 seconds), then parked on `<topic>.dlt`.
 
 ## Events
 
@@ -78,8 +77,9 @@ Consumers: **N** = notification, **A** = audit. Audit consumes every event on ev
 
 | Type | v | Phase | Consumers | When |
 |---|---|---|---|---|
-| `user.created` | 1 | 1 | A | First login provisions a LifeHub user and personal workspace |
-| `household.created` | 1 | 1 | A | A household and its shared workspace are created |
+| `user.created` | 1 | 1 | N, A | First login provisions a LifeHub user and personal workspace |
+| `user.profile.updated` | 1 | 2 | N, A | A user changes their display name or email |
+| `household.created` | 1 | 1 | N, A | A household and its shared workspace are created |
 | `household.updated` | 1 | 1 | A | Household name or settings change |
 | `member.invited` | 1 | 1 | N, A | An invitation is created |
 | `member.added` | 1 | 1 | N, A | An invitation is accepted |
@@ -89,6 +89,9 @@ Consumers: **N** = notification, **A** = audit. Audit consumes every event on ev
 ```jsonc
 // user.created (workspaceId: null, key: userId)
 { "userId": "…", "personalWorkspaceId": "…", "displayName": "Tobi" }
+
+// user.profile.updated (workspaceId: null, key: userId)
+{ "userId": "…", "displayName": "Tobi", "email": "tobi@example.com", "changedFields": ["email"] }
 
 // household.created
 { "householdId": "…", "name": "Fafowora Home", "ownerUserId": "…" }
@@ -109,6 +112,8 @@ Consumers: **N** = notification, **A** = audit. Audit consumes every event on ev
 // member.role.changed
 { "householdId": "…", "userId": "…", "previousRole": "MEMBER", "newRole": "ADMIN" }
 ```
+
+Notification keeps its own copy of who belongs to which workspace, built from `user.created`, `household.created`, `member.added`, `member.removed` and `member.role.changed`, so it can work out recipients without calling identity-workspace. It keeps each user's name and email from `user.created` and `user.profile.updated` for email delivery. The email is the one the user typed into their profile and is not verified.
 
 `invitedUserId` is set when the email already belongs to a LifeHub user, so notification can tell them in-app. Roles are `OWNER`, `ADMIN`, `MEMBER`.
 

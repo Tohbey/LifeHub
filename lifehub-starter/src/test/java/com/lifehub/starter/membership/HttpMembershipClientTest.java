@@ -105,6 +105,23 @@ class HttpMembershipClientTest {
                 .containsEntry(userId, WorkspaceRole.MEMBER);
     }
 
+    @Test
+    void looksUpTheUserIdOfASubjectAndCachesIt() {
+        server.expect(once(), requestTo(BASE + "/internal/v1/users?sub=sub-1"))
+                .andRespond(withSuccess("{\"userId\":\"%s\"}".formatted(userId), MediaType.APPLICATION_JSON));
+
+        assertThat(client.findUserIdBySubject("sub-1")).contains(userId);
+        assertThat(client.findUserIdBySubject("sub-1")).contains(userId);
+        server.verify();
+    }
+
+    @Test
+    void anUnknownSubjectHasNoUserId() {
+        server.expect(once(), requestTo(BASE + "/internal/v1/users?sub=sub-2")).andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThat(client.findUserIdBySubject("sub-2")).isEmpty();
+    }
+
     private String lookupUrl(String sub) {
         return BASE + "/internal/v1/workspaces/" + workspaceId + "/members?sub=" + sub;
     }

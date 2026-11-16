@@ -21,5 +21,10 @@
         <module>lifehub-service-registry</module>
         <module>lifehub-app</module>
         <module>identity-workspace</module>
+        <module>notification</module>
+        <module>finance</module>
+        <module>planner</module>
+        <module>shopping-meals</module>
+        <module>audit</module>
     </modules>
 </project>

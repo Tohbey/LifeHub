@@ -6,5 +6,5 @@ WORKDIR /app
 COPY target/identity-workspace-*.jar app.jar
 ENV JAVA_TOOL_OPTIONS="-Xmx256m -XX:+ExitOnOutOfMemoryError"
 EXPOSE 8080
-# No HEALTHCHECK yet: this JRE image ships without curl or wget. Health checks come with the Compose files.
+# Health check: see deploy/docker-compose.lifehub.yml (the JRE image has no curl, so it uses bash).
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

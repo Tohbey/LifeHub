@@ -2,6 +2,7 @@ package com.lifehub.starter.membership;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,6 +16,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.lifehub.starter.membership.InternalMembershipApi.MemberListResponse;
 import com.lifehub.starter.membership.InternalMembershipApi.MemberLookupResponse;
+import com.lifehub.starter.membership.InternalMembershipApi.UserLookupResponse;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 
@@ -30,6 +32,11 @@ public class HttpMembershipClient implements MembershipClient {
     private final RestClient restClient;
     private final CircuitBreaker circuitBreaker;
     private final Cache<CacheKey, Membership> cache;
+    /** Subject to user ID never changes once the user exists, so it is kept much longer than memberships. */
+    private final Cache<String, UUID> userIds = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofHours(1))
+            .maximumSize(10_000)
+            .build();
 
     /**
      * @param restClient already configured with the base URL, timeouts and the service token
@@ -76,6 +83,34 @@ public class HttpMembershipClient implements MembershipClient {
             response.members().forEach(m -> members.put(m.userId(), m.role()));
         }
         return members;
+    }
+
+    /** Returns the user ID from the cache, or asks identity-workspace and caches a positive answer. */
+    @Override
+    public Optional<UUID> findUserIdBySubject(String logtoSubject) {
+        UUID cached = userIds.getIfPresent(logtoSubject);
+        if (cached != null) {
+            return Optional.of(cached);
+        }
+        Optional<UUID> userId = call(() -> lookupUser(logtoSubject));
+        userId.ifPresent(id -> userIds.put(logtoSubject, id));
+        return userId;
+    }
+
+    /** Calls the internal user lookup endpoint; a 404 means nobody has signed in with this subject. */
+    private Optional<UUID> lookupUser(String logtoSubject) {
+        try {
+            UserLookupResponse response = restClient.get()
+                    .uri(uri -> uri.path(InternalMembershipApi.USERS_PATH).queryParam("sub", logtoSubject).build())
+                    .retrieve()
+                    .body(UserLookupResponse.class);
+            return Optional.ofNullable(response).map(UserLookupResponse::userId);
+        } catch (HttpClientErrorException ex) {
+            if (ex.getStatusCode() == HttpStatus.NOT_FOUND) {
+                return Optional.empty();
+            }
+            throw ex;
+        }
     }
 
     /** Calls the internal lookup endpoint; a 404 means not a member. */

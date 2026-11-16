@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -37,7 +38,10 @@ public class MembershipAutoConfiguration {
         return Clock.systemUTC();
     }
 
-    /** Provides this service's machine-to-machine token source, when Logto client credentials are configured. */
+    /**
+     * Provides this service's machine-to-machine token source, when Logto client credentials are configured.
+     * Calls to Logto trust {@code lifehub.security.ca-certificate} when it is set.
+     */
     @Bean
     @ConditionalOnMissingBean
     @ConditionalOnProperty("lifehub.service-auth.client-id")
@@ -45,7 +49,9 @@ public class MembershipAutoConfiguration {
             RestClient.Builder builder, Clock clock) {
         String issuer = security.issuer().replaceAll("/$", "");
         return new ServiceTokenProvider(
-                builder.clone().requestFactory(requestFactory(Duration.ofSeconds(5))).build(),
+                builder.clone()
+                        .requestFactory(ClientHttpRequestFactoryBuilder.jdk().build(security.logtoHttpClientSettings()))
+                        .build(),
                 orDefault(serviceAuth.tokenUri(), issuer + "/token"),
                 serviceAuth.clientId(),
                 serviceAuth.clientSecret(),

@@ -414,7 +414,7 @@ Rules:
 | `calendar.events` | planner | notification, audit |
 | `shopping.events` | shopping-meals | notification, audit |
 | `document.events` | document-inventory | notification, audit |
-| `<topic>.retry`, `<topic>.dlt` | consumers | operators |
+| `<topic>.dlt` | consumers | operators |
 
 ### Event envelope
 
@@ -450,7 +450,7 @@ A service must never commit a database change and then fail to publish its event
 Because delivery is at least once, consumers must tolerate duplicates:
 
 - Keep a `processed_events` table keyed by `eventId`, and skip events already handled.
-- Retry with backoff on `<topic>.retry`, then park failures on `<topic>.dlt` for inspection.
+- Retry in place with backoff, then park failures on `<topic>.dlt` for inspection.
 
 ### Event catalogue
 
@@ -486,6 +486,12 @@ SSE streams pass through `lifehub-app`, which is Spring Cloud Gateway (WebFlux) 
 ### Notification types
 
 Task assignments, calendar reminders, household invitations, shopping list updates, document expiry, budget alerts.
+
+### How recipients are found
+
+Notification keeps its own copy of workspaces, memberships, names and emails (`directory_*` tables), built from `identity.events`. It never calls identity-workspace to work out who to tell, and it only ever notifies active members of the event's workspace, apart from invitations and removals. On first start it reads every topic from the oldest retained event, so the copy is complete as long as Kafka still holds identity events (14 days).
+
+Shopping updates for the same list are merged into one notification for 10 minutes. Email is opt-in per notification type and off until `EMAIL_ENABLED=true`; failed emails are retried with backoff. The live stream (`/stream`) needs the bearer token in the `Authorization` header, so the PWA uses a fetch-based server-sent events client rather than `EventSource`.
 
 ### Own data
 
@@ -761,13 +767,18 @@ Configuration is supplied by environment variables and per-service `application.
 |---|---|---|
 | `LOGTO_ISSUER` | all services, app | OIDC issuer URL for JWT validation |
 | `LOGTO_AUDIENCE` | all services, app | Expected audience for user tokens (public API) |
+| `LOGTO_CA_CERT` | all services, app | PEM of the private CA (for example mkcert) behind Logto's TLS certificate. Calls to Logto then trust only that CA. Empty for a public certificate |
 | `LOGTO_INTERNAL_AUDIENCE` | identity-workspace and every service that calls it | Audience for machine-to-machine tokens (internal API) |
 | `LOGTO_M2M_CLIENT_ID`, `LOGTO_M2M_CLIENT_SECRET` | each service | That service's own machine-to-machine credentials |
 | `MYSQL_HOST`, `MYSQL_PORT` | all services | Database server |
 | `DB_USER`, `DB_PASSWORD` | each service | That service's runtime database credentials (DML only) |
 | `DB_MIGRATION_USER`, `DB_MIGRATION_PASSWORD` | each service | Credentials Liquibase uses for schema changes (DDL on that schema only) |
-| `KAFKA_BOOTSTRAP_SERVERS` | all services | For example `kafka:9092` |
+| `KAFKA_BOOTSTRAP_SERVERS` | all services | The Kafka listener for containers, for example `kafka:29092`; `localhost:9092` by default for local runs |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | notification | Email delivery |
+| `EMAIL_ENABLED`, `MAIL_FROM` | notification | Turns email delivery on (off by default) and sets the sender |
+| `LIFEHUB_URL` | notification | Public LifeHub URL, for links in emails |
+| `IDENTITY_WORKSPACE_URL` | every service except identity-workspace | identity-workspace on the Docker network, for membership checks. Default `http://localhost:8080` |
+| `SERVER_PORT` | all services, app, registry | The HTTP port. Local defaults: registry 8761, identity-workspace 8080, notification 8082, finance 8083, planner 8084, shopping-meals 8085, audit 8086, lifehub-app 8089 |
 | `STORAGE_PATH` | document-inventory | Directory for uploaded files |
 | `EUREKA_URL` | all services, app | The registry. Default `http://localhost:8761/eureka`; in Compose `http://lifehub-service-registry:8761/eureka` |
 | `SPRINGDOC_API_DOCS_ENABLED`, `SPRINGDOC_SWAGGER_UI_ENABLED` | all services, app | Set to `false` to turn off the OpenAPI docs and Swagger UI (on by default) |
@@ -796,7 +807,7 @@ LifeHub joins the existing homelab stack. It adds one container per module plus 
 
 ### Compose sketch
 
-A starting point to adapt, not a tested file. Replace `homelab` with the name of your existing Docker network.
+The working file is [`deploy/docker-compose.lifehub.yml`](deploy/docker-compose.lifehub.yml). It reuses the homelab's existing `mysql`, `kafka` and `logto` containers on the shared network (`HOMELAB_NETWORK`, default `homelab`), gives every container a health check (bash over `/dev/tcp`, because the JRE image has no curl), and mounts Logto's private CA from `deploy/certs/`. Its header lists the steps before the first start. The sketch below shows the shape.
 
 ```yaml
 services:
@@ -857,7 +868,8 @@ Repeat the `planner` block for each service, each with its own env file.
 
 ### Startup and topics
 
-- Create topics at deploy time with a script in `deploy/kafka/`, not by relying on auto-creation, so partitions and retention are explicit.
+- Create topics at deploy time with [`deploy/kafka/create-topics.sh`](deploy/kafka/create-topics.sh), not by relying on auto-creation, so partitions and retention are explicit.
+- Create the schemas and per-service users with [`deploy/mysql/create-schemas.sh`](deploy/mysql/create-schemas.sh). It reads the names and passwords from each `deploy/env/<service>.env`. The audit runtime user gets `SELECT` and `INSERT` only, so the audit log stays append-only.
 - Each service applies its own Liquibase changelog against its own schema at startup, using its migration user.
 - Use health checks (`/actuator/health`) and `depends_on` conditions where the order matters.
 

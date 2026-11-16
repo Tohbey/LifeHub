@@ -41,6 +41,11 @@ class WorkspaceAccessTest {
                     .forEach(m -> result.put(m.userId(), m.role()));
             return result;
         }
+
+        @Override
+        public Optional<UUID> findUserIdBySubject(String subject) {
+            return memberships.values().stream().findFirst().map(Membership::userId);
+        }
     });
 
     @BeforeEach

@@ -58,6 +58,8 @@ class IdentityWorkspaceIntegrationTest {
         registry.add("spring.liquibase.password", MYSQL::getPassword);
         registry.add("lifehub.security.issuer", () -> "https://auth.lifehub.test/oidc");
         registry.add("lifehub.security.audience", () -> "https://api.lifehub.test");
+        // Tests never call Logto, so they must not depend on a local CA file.
+        registry.add("lifehub.security.ca-certificate", () -> "");
         registry.add("lifehub.security.internal-audience", () -> "https://internal.lifehub.test");
         registry.add("lifehub.outbox.relay-enabled", () -> "false");
         registry.add("eureka.client.enabled", () -> "false");

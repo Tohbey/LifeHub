@@ -42,6 +42,8 @@ class LifehubApplicationTest {
                 () -> "http://localhost:" + STUB.getAddress().getPort());
         registry.add("lifehub.security.issuer", () -> "https://auth.lifehub.test/oidc");
         registry.add("lifehub.security.audience", () -> "https://api.lifehub.test");
+        // Tests never call Logto, so they must not depend on a local CA file.
+        registry.add("lifehub.security.ca-certificate", () -> "");
     }
 
     @Autowired

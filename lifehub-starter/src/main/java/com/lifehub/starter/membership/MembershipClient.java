@@ -19,4 +19,10 @@ public interface MembershipClient {
 
     /** Which of these LifeHub user IDs are active members, with their roles. Non-members are left out. */
     Map<UUID, WorkspaceRole> findMembers(UUID workspaceId, Collection<UUID> userIds);
+
+    /**
+     * The LifeHub user ID of this Logto subject, for endpoints that are about the caller rather than a
+     * workspace (such as {@code /api/v1/me/notifications}). Empty if the user has never signed in.
+     */
+    Optional<UUID> findUserIdBySubject(String logtoSubject);
 }

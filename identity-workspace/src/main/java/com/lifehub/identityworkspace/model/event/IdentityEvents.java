@@ -17,6 +17,7 @@ public final class IdentityEvents {
     public static final String TOPIC = "identity.events";
 
     public static final EventType USER_CREATED = new EventType(TOPIC, "user.created", 1);
+    public static final EventType USER_PROFILE_UPDATED = new EventType(TOPIC, "user.profile.updated", 1);
     public static final EventType HOUSEHOLD_CREATED = new EventType(TOPIC, "household.created", 1);
     public static final EventType HOUSEHOLD_UPDATED = new EventType(TOPIC, "household.updated", 1);
     public static final EventType MEMBER_INVITED = new EventType(TOPIC, "member.invited", 1);
@@ -25,6 +26,9 @@ public final class IdentityEvents {
     public static final EventType MEMBER_ROLE_CHANGED = new EventType(TOPIC, "member.role.changed", 1);
 
     public record UserCreated(UUID userId, UUID personalWorkspaceId, String displayName) {
+    }
+
+    public record UserProfileUpdated(UUID userId, String displayName, String email, List<String> changedFields) {
     }
 
     public record HouseholdCreated(UUID householdId, String name, UUID ownerUserId) {

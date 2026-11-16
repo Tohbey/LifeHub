@@ -33,11 +33,12 @@ import com.lifehub.starter.web.WebAutoConfiguration;
  * The starter's security chains as identity-workspace uses them, without a database: which paths need a
  * token, and that the internal membership API needs the membership:read scope. Runs without Docker.
  */
-@WebMvcTest(controllers = { InternalMembershipController.class, UserController.class })
+@WebMvcTest(controllers = { InternalMembershipController.class, InternalUserController.class, UserController.class })
 @ImportAutoConfiguration({ LifehubSecurityAutoConfiguration.class, WebAutoConfiguration.class })
 @TestPropertySource(properties = {
         "lifehub.security.issuer=https://auth.lifehub.test/oidc",
         "lifehub.security.audience=https://api.lifehub.test",
+        "lifehub.security.ca-certificate=",
         "lifehub.security.internal-audience=https://internal.lifehub.test" })
 class SecurityChainsTest {
 
@@ -87,6 +88,16 @@ class SecurityChainsTest {
             request.param("userId", UUID.randomUUID().toString());
         }
         mvc.perform(request).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void internalUserLookupNeedsTheMembershipScope() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(memberships.findUserIdBySubject("user-1")).thenReturn(Optional.of(userId));
+
+        mvc.perform(get("/internal/v1/users").param("sub", "user-1").with(jwt())).andExpect(status().isForbidden());
+        mvc.perform(get("/internal/v1/users").param("sub", "user-1").with(scope())).andExpect(status().isOk());
+        mvc.perform(get("/internal/v1/users").param("sub", "nobody").with(scope())).andExpect(status().isNotFound());
     }
 
     @Test
