@@ -1,0 +1,120 @@
+# LifeHub on the homelab Docker host. Joins the existing stack: reuses its mysql, kafka, logto and Nginx Proxy
+# Manager containers on the shared network, and adds the registry, lifehub-app and the business services.
+#
+# Before the first start (README section 15):
+#   1. ./mvnw clean package -DskipTests              build every jar (the Dockerfiles copy them)
+#   2. deploy/mysql/create-schemas.sh                schemas and per-service database users
+#   3. deploy/kafka/create-topics.sh                 topics with explicit partitions and retention
+#   4. cp deploy/env/<service>.env.example deploy/env/<service>.env, then fill in real values
+#   5. copy Logto's private CA certificate to deploy/certs/logto-ca.pem (or remove the secrets blocks)
+# Then: docker compose -f deploy/docker-compose.lifehub.yml up -d --build
+#
+# Only lifehub-app is meant to get a proxy host in Nginx Proxy Manager. Nothing here publishes a host port.
+
+x-service: &service
+  restart: unless-stopped
+  networks: [homelab]
+  depends_on:
+    lifehub-service-registry:
+      condition: service_healthy
+  secrets: [logto-ca]
+
+# The JRE image has no curl or wget, so the check speaks HTTP over bash's /dev/tcp.
+# SERVER_PORT is set per service; $$ stops Compose from expanding it, so bash does.
+x-healthcheck: &healthcheck
+  test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/$${SERVER_PORT} && printf 'GET /actuator/health/readiness HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+  interval: 15s
+  timeout: 5s
+  retries: 5
+  start_period: 90s
+
+services:
+  lifehub-service-registry:
+    image: lifehub/lifehub-service-registry:${LIFEHUB_VERSION:-latest}
+    build: ../lifehub-service-registry
+    restart: unless-stopped
+    networks: [homelab]
+    environment:
+      SERVER_PORT: 8761
+    healthcheck: *healthcheck
+
+  identity-workspace:
+    <<: *service
+    image: lifehub/identity-workspace:${LIFEHUB_VERSION:-latest}
+    build: ../identity-workspace
+    env_file: ./env/identity-workspace.env
+    environment:
+      SERVER_PORT: 8080
+    healthcheck: *healthcheck
+
+  notification:
+    <<: *service
+    image: lifehub/notification:${LIFEHUB_VERSION:-latest}
+    build: ../notification
+    env_file: ./env/notification.env
+    environment:
+      SERVER_PORT: 8082
+    healthcheck: *healthcheck
+
+  finance:
+    <<: *service
+    image: lifehub/finance:${LIFEHUB_VERSION:-latest}
+    build: ../finance
+    env_file: ./env/finance.env
+    environment:
+      SERVER_PORT: 8083
+    healthcheck: *healthcheck
+
+  planner:
+    <<: *service
+    image: lifehub/planner:${LIFEHUB_VERSION:-latest}
+    build: ../planner
+    env_file: ./env/planner.env
+    environment:
+      SERVER_PORT: 8084
+    healthcheck: *healthcheck
+
+  shopping-meals:
+    <<: *service
+    image: lifehub/shopping-meals:${LIFEHUB_VERSION:-latest}
+    build: ../shopping-meals
+    env_file: ./env/shopping-meals.env
+    environment:
+      SERVER_PORT: 8085
+    healthcheck: *healthcheck
+
+  audit:
+    <<: *service
+    image: lifehub/audit:${LIFEHUB_VERSION:-latest}
+    build: ../audit
+    env_file: ./env/audit.env
+    environment:
+      SERVER_PORT: 8086
+    healthcheck: *healthcheck
+
+  # The only LifeHub container behind Nginx Proxy Manager: forward the proxy host to lifehub-app:8089, with
+  # buffering off for /api/v1/me/notifications/stream (server-sent events).
+  lifehub-app:
+    <<: *service
+    image: lifehub/lifehub-app:${LIFEHUB_VERSION:-latest}
+    build: ../lifehub-app
+    env_file: ./env/lifehub-app.env
+    environment:
+      SERVER_PORT: 8089
+    healthcheck: *healthcheck
+    depends_on:
+      lifehub-service-registry:
+        condition: service_healthy
+      identity-workspace:
+        condition: service_healthy
+
+secrets:
+  # Logto's private CA (mkcert). Services read it through LOGTO_CA_CERT=/run/secrets/logto-ca.
+  # Delete this block, the "secrets" line in x-service and LOGTO_CA_CERT if Logto has a public certificate.
+  logto-ca:
+    file: ./certs/logto-ca.pem
+
+networks:
+  homelab:
+    name: ${HOMELAB_NETWORK:-homelab}
+    external: true

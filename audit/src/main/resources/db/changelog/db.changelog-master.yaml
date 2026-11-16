@@ -1,0 +1,6 @@
+# audit schema (lifehub_audit). Append new files at the end; never edit an applied one.
+# No outbox (audit publishes nothing) and no processed_events: the event ID is the primary key, so a
+# redelivered event is simply not inserted twice.
+databaseChangeLog:
+  - include:
+      file: db/changelog/changes/0001-initial-schema.sql
