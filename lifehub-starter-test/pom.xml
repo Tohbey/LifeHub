@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The test libraries every business service shares. Services add this one dependency with test scope
+  instead of listing each library: Maven does not pass test-scoped dependencies of lifehub-starter on.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.lifehub</groupId>
+        <artifactId>lifehub-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../lifehub-parent</relativePath>
+    </parent>
+
+    <artifactId>lifehub-starter-test</artifactId>
+    <name>lifehub-starter-test</name>
+
+    <!-- Compile scope here so they pass on; consumers add this artifact with <scope>test</scope>. -->
+    <dependencies>
+        <!-- JUnit 5, AssertJ, Mockito, Spring test context -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+        </dependency>
+        <!-- MockMvc for controller and integration tests -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+        </dependency>
+        <!-- jwt() and other Spring Security test helpers -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-test</artifactId>
+        </dependency>
+        <!-- Real MySQL in Docker for integration tests -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-mysql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+        </dependency>
+    </dependencies>
+</project>

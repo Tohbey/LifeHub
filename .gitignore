@@ -1,0 +1,18 @@
+# OS and editors
+.DS_Store
+.idea/
+*.iml
+.vscode/
+
+# Build output
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# Frontend
+node_modules/
+lifehub-web/dist/
+lifehub-web/.angular/
+
+# Secrets: only *.env.example templates are committed
+*.env
+!*.env.example
