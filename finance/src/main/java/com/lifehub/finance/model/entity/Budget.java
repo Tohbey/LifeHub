@@ -45,6 +45,12 @@ public class Budget extends AssignedIdEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** Changes the monthly limit. */
+    public void changeLimit(BigDecimal amountLimit, Instant now) {
+        this.amountLimit = amountLimit;
+        this.updatedAt = now;
+    }
+
     /** Creates a budget. */
     public Budget(UUID id, UUID workspaceId, UUID categoryId, BigDecimal amountLimit, String currency, Instant now) {
         super(id);

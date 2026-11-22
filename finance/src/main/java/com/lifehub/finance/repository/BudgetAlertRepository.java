@@ -1,35 +1,40 @@
 package com.lifehub.finance.repository;
 
-import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Optional;
 import java.util.UUID;
 
-import org.springframework.jdbc.core.simple.JdbcClient;
+import jakarta.persistence.LockModeType;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
-import com.lifehub.starter.id.Ids;
-import com.lifehub.starter.persistence.Dates;
+import com.lifehub.finance.model.entity.BudgetAlert;
+import com.lifehub.finance.model.entity.BudgetAlertId;
 
-import lombok.RequiredArgsConstructor;
-
-/** Which budget thresholds have already been announced, so each is announced once per period. */
+/**
+ * Which budget thresholds have already been announced, so each is announced once per period. Callers lock the
+ * budget row first ({@link BudgetRepository#findLockedByWorkspaceIdAndCategoryIdAndCurrency}), so checking and saving
+ * an alert cannot race, and check with {@link #findLockedById}: a locking read sees alerts other requests have
+ * just committed, which a plain read inside a REPEATABLE READ transaction may not.
+ */
 @Repository
-@RequiredArgsConstructor
-public class BudgetAlertRepository {
+public interface BudgetAlertRepository extends JpaRepository<BudgetAlert, BudgetAlertId> {
 
-    private final JdbcClient jdbc;
-    private final Clock clock;
+    /** The alert, read with a lock so the latest committed state is seen. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<BudgetAlert> findLockedById(BudgetAlertId id);
 
-    /** Records the alert; returns true only the first time, even when two requests race. */
-    public boolean recordOnce(UUID budgetId, LocalDate periodStart, int thresholdPercent) {
-        return jdbc.sql("""
-                INSERT IGNORE INTO budget_alerts (budget_id, period_start, threshold_percent, created_at)
-                VALUES (:budget, :period, :threshold, :now)
-                """)
-                .param("budget", Ids.toBytes(budgetId))
-                .param("period", periodStart)
-                .param("threshold", thresholdPercent)
-                .param("now", Dates.utc(clock.instant()))
-                .update() == 1;
-    }
+    @Modifying(flushAutomatically = true)
+    @Query("delete from BudgetAlert a where a.id.budgetId = :budgetId")
+    /** Forgets every alert of a budget, before the budget is deleted. */
+    void deleteAllByBudgetId(UUID budgetId);
+
+    @Modifying(flushAutomatically = true)
+    @Query("delete from BudgetAlert a where a.id.budgetId = :budgetId and a.id.periodStart = :periodStart")
+    /** Forgets a budget's alerts for one period, so they can fire again after the limit changes. */
+    void deleteByBudgetIdAndPeriod(UUID budgetId, LocalDate periodStart);
 }

@@ -24,6 +24,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.lifehub.shoppingmeals.service.ShoppingListService;
+import com.lifehub.shoppingmeals.service.MealPlanService;
+import com.lifehub.shoppingmeals.service.RecipeService;
 import com.lifehub.shoppingmeals.service.ShoppingItemService;
 
 import com.lifehub.starter.security.LifehubSecurityAutoConfiguration;
@@ -57,6 +59,12 @@ class OpenApiDocsTest {
     @MockitoBean
     ShoppingItemService itemService;
 
+    @MockitoBean
+    RecipeService recipeService;
+
+    @MockitoBean
+    MealPlanService mealPlanService;
+
 
     @Test
     void publicDocsDescribeEveryEndpoint() throws Exception {
@@ -71,6 +79,8 @@ class OpenApiDocsTest {
         assertThat(docs).contains("\"/api/v1/shopping-items/{itemId}\"");
         assertThat(docs).contains("\"name\":\"Shopping lists\"");
         assertThat(docs).contains("\"name\":\"Shopping items\"");
+        assertThat(docs).contains("\"/api/v1/workspaces/{workspaceId}/recipes/{recipeId}/shopping-list\"",
+                "\"/api/v1/workspaces/{workspaceId}/meals\"", "\"name\":\"Recipes\"", "\"name\":\"Meal plan\"");
         assertThat(docs).contains("\"summary\":\"Update or tick off an item\"", "\"401\"", "#/components/schemas/ProblemDetail");
         assertThat(docs).doesNotContain("\"/internal/v1");
     }

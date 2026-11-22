@@ -43,6 +43,11 @@ public class Category extends AssignedIdEntity {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
+    /** Renames the category. */
+    public void rename(String name) {
+        this.name = name;
+    }
+
     /** Creates a category. */
     public Category(UUID id, UUID workspaceId, EntryType type, String name, Instant now) {
         super(id);

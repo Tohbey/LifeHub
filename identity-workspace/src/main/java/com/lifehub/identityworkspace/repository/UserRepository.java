@@ -14,6 +14,6 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     /** Finds the user linked to a Logto subject. */
     Optional<User> findByLogtoSubject(String logtoSubject);
 
-    /** Finds a user by their (lowercased) email, used to tell an existing user about an invitation. */
-    Optional<User> findFirstByEmail(String email);
+    /** Finds a user with this (lowercased) email, verified, used to tell an existing user about an invitation. */
+    Optional<User> findFirstByEmailAndEmailVerifiedAtIsNotNull(String email);
 }

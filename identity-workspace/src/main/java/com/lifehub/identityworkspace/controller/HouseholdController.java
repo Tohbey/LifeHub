@@ -28,6 +28,7 @@ import com.lifehub.identityworkspace.model.dto.CreateInvitationRequest;
 import com.lifehub.identityworkspace.model.dto.HouseholdDTO;
 import com.lifehub.identityworkspace.model.dto.InvitationDTO;
 import com.lifehub.identityworkspace.model.dto.MemberDTO;
+import com.lifehub.identityworkspace.model.dto.PendingInvitationDTO;
 import com.lifehub.identityworkspace.model.dto.UpdateHouseholdRequest;
 import com.lifehub.identityworkspace.service.HouseholdService;
 import com.lifehub.starter.web.PageResponse;
@@ -126,6 +127,44 @@ class HouseholdController {
             @Valid @RequestBody CreateInvitationRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(householdService.inviteMember(jwt.getSubject(), householdId, request));
+    }
+
+    /** GET /api/v1/households/{id}/invitations: pending invitations, newest first. Owners and admins only. */
+    @Operation(summary = "List pending invitations",
+            description = "Invitations that can still be accepted, newest first. Tokens are never shown again.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "One page of invitations"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "Only owners and admins can see invitations",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "404", description = "Household not found, or you are not a member of it",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    @GetMapping("/{householdId}/invitations")
+    PageResponse<PendingInvitationDTO> getInvitations(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID householdId,
+            @PageableDefault(sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return householdService.getInvitations(jwt.getSubject(), householdId, pageable);
+    }
+
+    /** DELETE /api/v1/households/{id}/invitations/{invitationId}: revokes a pending invitation. Returns 204. */
+    @Operation(summary = "Revoke an invitation", description = "Its link stops working at once. Owners and admins only.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Invitation revoked", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "Only owners and admins can revoke invitations",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "404", description = "Household or invitation not found",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "409", description = "The invitation was already accepted or revoked",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    @DeleteMapping("/{householdId}/invitations/{invitationId}")
+    ResponseEntity<Void> revokeInvitation(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID householdId,
+            @PathVariable UUID invitationId) {
+        householdService.revokeInvitation(jwt.getSubject(), householdId, invitationId);
+        return ResponseEntity.noContent().build();
     }
 
     /** GET /api/v1/households/{id}/members: lists the household's active members, longest-standing first. */

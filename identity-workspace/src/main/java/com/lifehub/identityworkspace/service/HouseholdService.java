@@ -10,6 +10,7 @@ import com.lifehub.identityworkspace.model.dto.CreateInvitationRequest;
 import com.lifehub.identityworkspace.model.dto.HouseholdDTO;
 import com.lifehub.identityworkspace.model.dto.InvitationDTO;
 import com.lifehub.identityworkspace.model.dto.MemberDTO;
+import com.lifehub.identityworkspace.model.dto.PendingInvitationDTO;
 import com.lifehub.identityworkspace.model.dto.UpdateHouseholdRequest;
 import com.lifehub.starter.web.PageResponse;
 
@@ -31,6 +32,12 @@ public interface HouseholdService {
 
     /** The returned DTO carries the invite token, which is not available again. */
     InvitationDTO inviteMember(String subject, UUID householdId, CreateInvitationRequest request);
+
+    /** Lists the household's pending, unexpired invitations, newest first. Owners and admins only. */
+    PageResponse<PendingInvitationDTO> getInvitations(String subject, UUID householdId, Pageable pageable);
+
+    /** Withdraws a pending invitation so its link stops working. Owners and admins only. */
+    void revokeInvitation(String subject, UUID householdId, UUID invitationId);
 
     /** Lists the active members of a household the caller belongs to. */
     PageResponse<MemberDTO> getMembers(String subject, UUID householdId, Pageable pageable);

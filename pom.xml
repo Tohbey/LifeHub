@@ -19,6 +19,7 @@
         <module>lifehub-starter-test</module>
         <module>lifehub-starter</module>
         <module>lifehub-service-registry</module>
+        <module>lifehub-web</module>
         <module>lifehub-app</module>
         <module>identity-workspace</module>
         <module>notification</module>
@@ -26,5 +27,6 @@
         <module>planner</module>
         <module>shopping-meals</module>
         <module>audit</module>
+        <module>notes</module>
     </modules>
 </project>

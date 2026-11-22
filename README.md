@@ -1,6 +1,6 @@
 # LifeHub
 
-A private, self-hosted personal and family management platform. One system for personal finance, shared household finance, tasks, calendar, shopping, meal planning, home inventory and documents, with individual accounts, private personal spaces and shared household spaces.
+A private, self-hosted personal and family management platform. One system for personal finance, shared household finance, tasks, calendar, shopping, meal planning and notes, with individual accounts, private personal spaces and shared household spaces.
 
 LifeHub runs as a set of Spring Boot microservices. `lifehub-app` serves the Angular PWA and is the API gateway: it checks the user's token and routes each API call to the owning service, which it finds through `lifehub-service-registry` (Eureka). Services communicate through REST at the edge and Kafka events internally. Identity is handled by an existing Logto instance, and data lives in an existing MySQL server.
 
@@ -105,7 +105,6 @@ flowchart TB
         FIN["finance"]
         PLN["planner"]
         SHP["shopping-meals"]
-        DOC["document-inventory"]
         NTS["notes"]
         NOT["notification"]
         AUD["audit"]
@@ -120,7 +119,6 @@ flowchart TB
     APP --> FIN
     APP --> PLN
     APP --> SHP
-    APP --> DOC
     APP --> NTS
     APP --> NOT
     APP --> AUD
@@ -189,7 +187,6 @@ lifehub/
 ├── finance/                 # transactions, splits, budgets, savings goals, reports
 ├── planner/                 # tasks and calendar
 ├── shopping-meals/          # shopping lists, recipes, meal plans
-├── document-inventory/      # documents, warranties, inventory, expiry dates
 ├── notes/                   # notes, tags, bookmarks
 ├── notification/            # Kafka consumer, delivery channels
 ├── audit/                   # append-only audit log
@@ -252,7 +249,7 @@ Rules:
 - API docs come from `lifehub-starter` (springdoc): every service serves Swagger UI at `/swagger-ui.html`, with a `public` group (`/api/**`) and an `internal` group (`/internal/**`). `lifehub-app` serves one Swagger UI at `/swagger-ui.html` that lists every service, reading each one's public group through a `/openapi/<service>` route; the internal group is never routed. A new service adds that route and an entry under `springdoc.swagger-ui.urls` in `lifehub-app`. "Try it out" needs a Logto access token (Authorize).
 - Packages appear only when they have something in them. Security, the global exception handler, the outbox and membership checks come from `lifehub-starter`, so most services have no `security/` package and only service-specific exceptions in `exception/`.
 
-Java packages follow the module name without hyphens: `com.lifehub.identityworkspace`, `com.lifehub.shoppingmeals`, `com.lifehub.documentinventory`.
+Java packages follow the module name without hyphens: `com.lifehub.identityworkspace`, `com.lifehub.shoppingmeals`.
 
 ---
 
@@ -271,7 +268,7 @@ Java packages follow the module name without hyphens: `com.lifehub.identityworks
 | Module | Responsibility |
 |---|---|
 | `lifehub-service-registry` | The Eureka server. Every service and `lifehub-app` register with it on startup under their `spring.application.name` and send heartbeats; dead instances drop out within about 30 seconds. Reachable only on the Docker network. |
-| `lifehub-web` | The Angular PWA source. Built with `ng build`, never deployed on its own. |
+| `lifehub-web` | The Angular PWA. A Maven module too: its build runs `npm ci` and `ng build` with a Node it downloads itself and packages the output as `static/` in a jar that `lifehub-app` depends on. Still runs standalone with `npm start` for development. Skip it with `-Dlifehub.web.skip=true`. |
 | `lifehub-app` | The public entry point and API gateway. Serves the built `lifehub-web` output, validates user tokens on `/api/**`, and routes each path to its owning service with the Spring Cloud Gateway routes in its `application.yaml` (`lb://<service>`). `/internal/**` has no route. Rate limiting is not built yet. |
 
 The browser only ever talks to `lifehub-app`. `lifehub-app` finds services by name through `lifehub-service-registry`, so no service URL is configured anywhere ([ADR 0011](deploy/docs/adr/0011-routing-in-app-with-eureka.md)).
@@ -294,7 +291,6 @@ It owns no schema, no database scripts, no repositories and no business services
 | `finance` | Categories, accounts, transactions, splits, budgets, savings goals, CSV export and reports | `transaction.created`, `transaction.updated`, `budget.threshold.exceeded` | None initially |
 | `planner` | Tasks and calendar events, recurrence | `task.assigned`, `task.completed`, `task.overdue`, `calendar.event.created`, `calendar.event.reminder.due` | None initially |
 | `shopping-meals` | Shopping lists and items, recipes, meal plans | `shopping.item.added`, `shopping.item.purchased` | None initially |
-| `document-inventory` | Document metadata and files, inventory items, warranties, expiry dates | `document.uploaded`, `document.expiring`, `warranty.expiring` | None initially |
 | `notes` | Notes, categories and tags, bookmarks and saved URLs, personal and shared visibility | None initially | None initially |
 | `notification` | Notifications, preferences, push subscriptions, delivery attempts | None initially | Events from every service above |
 | `audit` | Append-only audit log | None | Events from every service |
@@ -413,7 +409,6 @@ Rules:
 | `task.events` | planner | notification, audit |
 | `calendar.events` | planner | notification, audit |
 | `shopping.events` | shopping-meals | notification, audit |
-| `document.events` | document-inventory | notification, audit |
 | `<topic>.dlt` | consumers | operators |
 
 ### Event envelope
@@ -471,7 +466,7 @@ The notification service is the first consumer of the event stream and the main 
 5. Deliver over the enabled channels.
 6. Retry failed deliveries.
 
-Time-based conditions (overdue tasks, calendar reminders, document and warranty expiry) are detected by the service that owns the data, which publishes an event such as `task.overdue`. Notification has no business scheduler of its own ([ADR 0008](deploy/docs/adr/0008-time-based-events-from-owning-service.md)).
+Time-based conditions (overdue tasks, calendar reminders) are detected by the service that owns the data, which publishes an event such as `task.overdue`. Notification has no business scheduler of its own ([ADR 0008](deploy/docs/adr/0008-time-based-events-from-owning-service.md)).
 
 ### Channels
 
@@ -485,11 +480,11 @@ SSE streams pass through `lifehub-app`, which is Spring Cloud Gateway (WebFlux) 
 
 ### Notification types
 
-Task assignments, calendar reminders, household invitations, shopping list updates, document expiry, budget alerts.
+Task assignments, calendar reminders, household invitations, shopping list updates, budget alerts.
 
 ### How recipients are found
 
-Notification keeps its own copy of workspaces, memberships, names and emails (`directory_*` tables), built from `identity.events`. It never calls identity-workspace to work out who to tell, and it only ever notifies active members of the event's workspace, apart from invitations and removals. On first start it reads every topic from the oldest retained event, so the copy is complete as long as Kafka still holds identity events (14 days).
+Notification keeps its own copy of workspaces, memberships, names and emails (`directory_*` tables), built from `identity.events`. It does not call identity-workspace to work out who to tell, and it only ever notifies active members of the event's workspace, apart from invitations and removals. On first start it reads every topic from the oldest retained event. A workspace whose identity events are older than Kafka's 14-day retention is filled in once from identity-workspace's internal API when its first event arrives. Emails are only sent to addresses the user has verified.
 
 Shopping updates for the same list are merged into one notification for 10 minutes. Email is opt-in per notification type and off until `EMAIL_ENABLED=true`; failed emails are retried with backoff. The live stream (`/stream`) needs the bearer token in the `Authorization` header, so the PWA uses a fetch-based server-sent events client rather than `EventSource`.
 
@@ -519,7 +514,6 @@ One MySQL server, one **schema per service**, one database user per schema, and 
 | finance | `lifehub_finance` | `categories`, `financial_accounts`, `transactions`, `transaction_splits`, `budgets`, `savings_goals` |
 | planner | `lifehub_planner` | `tasks`, `calendar_events` |
 | shopping-meals | `lifehub_shopping` | `shopping_lists`, `shopping_items`, `recipes`, `meal_plans` |
-| document-inventory | `lifehub_documents` | `documents`, `inventory_items` |
 | notes | `lifehub_notes` | `notes`, `tags`, `bookmarks` |
 | notification | `lifehub_notification` | `notifications`, `notification_preferences`, `push_subscriptions`, `delivery_attempts`, `processed_events` |
 | audit | `lifehub_audit` | `audit_logs` |
@@ -572,7 +566,6 @@ Routes live in `lifehub-app/src/main/resources/application.yaml`. Each route's U
 | `/api/v1/workspaces/*/transactions**`, `budgets**`, `savings-goals**`, `finance/**` | finance |
 | `/api/v1/workspaces/*/tasks**`, `events**` | planner |
 | `/api/v1/workspaces/*/shopping-lists**`, `/api/v1/shopping-**`, `meals**`, `recipes**` | shopping-meals |
-| `/api/v1/workspaces/*/documents**`, `inventory**`, `/api/v1/documents/**` | document-inventory |
 | `/api/v1/workspaces/*/notes**`, `tags**`, `bookmarks**` | notes |
 | `/api/v1/workspaces/*/audit**` | audit (admins only) |
 | `/internal/**` | never routed (service-to-service only) |
@@ -585,12 +578,16 @@ Route order matters: the more specific `/me/notifications` route has a lower `or
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/api/v1/me` | Current user profile |
-| PATCH | `/api/v1/me` | Update profile |
+| PATCH | `/api/v1/me` | Update profile (a new email must be verified again) |
+| POST | `/api/v1/me/email-verification` | Email a verification link to the profile email |
+| POST | `/api/v1/me/email-verification/{token}` | Confirm the email with the link's token |
 | GET | `/api/v1/me/workspaces` | List accessible workspaces |
 | POST | `/api/v1/households` | Create household |
 | GET | `/api/v1/households/{id}` | Household details |
 | PATCH | `/api/v1/households/{id}` | Update household |
 | POST | `/api/v1/households/{id}/invitations` | Invite member |
+| GET | `/api/v1/households/{id}/invitations` | Pending invitations (owners and admins) |
+| DELETE | `/api/v1/households/{id}/invitations/{invitationId}` | Revoke a pending invitation |
 | POST | `/api/v1/invitations/{token}/accept` | Accept invitation |
 | GET | `/api/v1/households/{id}/members` | List members |
 | PATCH | `/api/v1/households/{id}/members/{userId}` | Change member role |
@@ -606,8 +603,11 @@ Route order matters: the more specific `/me/notifications` route has a lower `or
 | PATCH | `/api/v1/workspaces/{id}/transactions/{transactionId}` | Update transaction |
 | DELETE | `/api/v1/workspaces/{id}/transactions/{transactionId}` | Delete transaction |
 | GET | `/api/v1/workspaces/{id}/finance/summary` | Financial summary |
+| GET | `/api/v1/workspaces/{id}/finance/export` | Transactions as CSV (at most 10,000 rows) |
+| PATCH, DELETE | `/api/v1/workspaces/{id}/finance/categories/{categoryId}` | Rename or delete a category (delete refused while in use) |
 | GET | `/api/v1/workspaces/{id}/budgets` | List budgets |
 | POST | `/api/v1/workspaces/{id}/budgets` | Create budget |
+| PATCH, DELETE | `/api/v1/workspaces/{id}/budgets/{budgetId}` | Change the monthly limit or delete a budget |
 | GET | `/api/v1/workspaces/{id}/savings-goals` | Savings goals |
 
 Example request:
@@ -636,8 +636,9 @@ The service validates that the payer and every split participant are members of 
 | GET | `/api/v1/workspaces/{id}/tasks` | List tasks |
 | POST | `/api/v1/workspaces/{id}/tasks` | Create task |
 | PATCH | `/api/v1/workspaces/{id}/tasks/{taskId}` | Update task |
-| GET | `/api/v1/workspaces/{id}/events` | List events |
-| POST | `/api/v1/workspaces/{id}/events` | Create event |
+| DELETE | `/api/v1/workspaces/{id}/tasks/{taskId}` | Delete task (creator, owner or admin) |
+| GET | `/api/v1/workspaces/{id}/events` | List events; a recurring event appears once per occurrence |
+| POST | `/api/v1/workspaces/{id}/events` | Create event, optionally repeating; never starting in the past |
 | PATCH | `/api/v1/workspaces/{id}/events/{eventId}` | Update event |
 
 ### Shopping and meals
@@ -649,19 +650,25 @@ The service validates that the payer and every split participant are members of 
 | POST | `/api/v1/shopping-lists/{id}/items` | Add item |
 | PATCH | `/api/v1/shopping-items/{itemId}` | Update item |
 | DELETE | `/api/v1/shopping-items/{itemId}` | Remove item |
+| GET, POST | `/api/v1/workspaces/{id}/recipes` | List (`?q=` by name) or add recipes, with their ingredients |
+| GET, PUT, DELETE | `/api/v1/workspaces/{id}/recipes/{recipeId}` | Read, replace or delete a recipe (author, owner or admin to change) |
+| POST | `/api/v1/workspaces/{id}/recipes/{recipeId}/shopping-list` | Add every ingredient to a shopping list |
+| GET | `/api/v1/workspaces/{id}/meals?from=&to=` | The meal plan for up to 62 days |
+| POST, DELETE | `/api/v1/workspaces/{id}/meals[/{entryId}]` | Plan a recipe or a free-text meal, or remove one |
 
-### Documents and inventory
+### Notes and bookmarks
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/api/v1/workspaces/{id}/documents` | List documents |
-| POST | `/api/v1/workspaces/{id}/documents` | Upload document |
-| GET | `/api/v1/documents/{documentId}/download` | Download document |
-| DELETE | `/api/v1/documents/{documentId}` | Delete document |
-| GET | `/api/v1/workspaces/{id}/inventory` | List assets |
-| POST | `/api/v1/workspaces/{id}/inventory` | Register asset |
+| GET, POST | `/api/v1/workspaces/{id}/notes` | Your notes and the shared ones (`?q=`, `?tag=`), or write one |
+| GET, PUT, DELETE | `/api/v1/workspaces/{id}/notes/{noteId}` | Read, replace or delete a note |
+| GET, POST | `/api/v1/workspaces/{id}/bookmarks` | Saved links (`?q=`, `?tag=`), or save one (http and https only) |
+| PUT, DELETE | `/api/v1/workspaces/{id}/bookmarks/{bookmarkId}` | Replace or delete a link |
+| GET | `/api/v1/workspaces/{id}/tags` | Tags on what you can see, with counts |
 
-> **Note:** a few endpoints (shopping items, document download) carry the resource ID instead of the workspace ID. For these, the service must look up the resource's workspace and then check membership. Consider moving them under `/workspaces/{id}/...` so the convention is uniform.
+A note or bookmark is `PERSONAL` (only its author sees it; anyone else gets the same 404 as for one that does not exist) or `SHARED` (every member reads and edits it; only the author changes who sees it, and the author or an owner or admin deletes it).
+
+> **Note:** a few endpoints (shopping lists and items) carry the resource ID instead of the workspace ID. For these, the service must look up the resource's workspace and then check membership. Consider moving them under `/workspaces/{id}/...` so the convention is uniform.
 
 ### API conventions
 
@@ -687,7 +694,7 @@ lifehub-web/
 │   │   ├── core/        # auth, guards, interceptors, services, layout
 │   │   ├── shared/      # components, pipes, directives
 │   │   ├── features/    # dashboard, household, finance, calendar, tasks,
-│   │   │                # shopping, documents, inventory, notes, settings
+│   │   │                # shopping, meals, notes, settings
 │   │   └── app.routes.ts
 │   ├── assets/
 │   └── manifest.webmanifest
@@ -710,6 +717,7 @@ Cache **static application resources only**. Never cache finance API responses, 
 ### Serving through lifehub-app
 
 - `lifehub-app` serves the Angular build at `/` and sends unknown non-API paths to `index.html`, so refreshing on `/finance` does not return a 404.
+- The build is wired through Maven: `lifehub-web/pom.xml` builds the app and packages it under `static/`, and `lifehub-app` depends on that jar, so `./mvnw package` produces one jar with the API gateway and the UI.
 - Because the browser sees one origin, CORS is not needed and the OIDC redirect URI stays simple.
 - The Angular HTTP interceptor attaches the access token to `/api/**` calls only.
 
@@ -778,8 +786,7 @@ Configuration is supplied by environment variables and per-service `application.
 | `EMAIL_ENABLED`, `MAIL_FROM` | notification | Turns email delivery on (off by default) and sets the sender |
 | `LIFEHUB_URL` | notification | Public LifeHub URL, for links in emails |
 | `IDENTITY_WORKSPACE_URL` | every service except identity-workspace | identity-workspace on the Docker network, for membership checks. Default `http://localhost:8080` |
-| `SERVER_PORT` | all services, app, registry | The HTTP port. Local defaults: registry 8761, identity-workspace 8080, notification 8082, finance 8083, planner 8084, shopping-meals 8085, audit 8086, lifehub-app 8089 |
-| `STORAGE_PATH` | document-inventory | Directory for uploaded files |
+| `SERVER_PORT` | all services, app, registry | The HTTP port. Local defaults: registry 8761, identity-workspace 8080, notification 8082, finance 8083, planner 8084, shopping-meals 8085, audit 8086, notes 8088, lifehub-app 8089 |
 | `EUREKA_URL` | all services, app | The registry. Default `http://localhost:8761/eureka`; in Compose `http://lifehub-service-registry:8761/eureka` |
 | `SPRINGDOC_API_DOCS_ENABLED`, `SPRINGDOC_SWAGGER_UI_ENABLED` | all services, app | Set to `false` to turn off the OpenAPI docs and Swagger UI (on by default) |
 
@@ -802,7 +809,7 @@ LifeHub joins the existing homelab stack. It adds one container per module plus 
 |---|---|---|
 | `lifehub-app` | Nginx Proxy Manager | The only LifeHub container with a proxy host |
 | `lifehub-service-registry` | Docker network only | Port 8761. Start it first: services and `lifehub-app` need it to find each other |
-| `identity-workspace`, `finance`, `planner`, `shopping-meals`, `document-inventory`, `notes`, `notification`, `audit` | Docker network only | Not published on host ports |
+| `identity-workspace`, `finance`, `planner`, `shopping-meals`, `notes`, `notification`, `audit` | Docker network only | Not published on host ports |
 | `kafka` | Docker network only | KRaft mode, single broker |
 
 ### Compose sketch
@@ -876,7 +883,6 @@ Repeat the `planner` block for each service, each with its own env file.
 ### Backups
 
 - Back up the LifeHub MySQL schemas with your existing MySQL backup routine.
-- Back up the document storage volume.
 - Kafka data is replayable event history, not the source of truth. Losing it is recoverable only if the services' own databases are intact.
 
 ---
@@ -959,10 +965,9 @@ Alert on: a growing dead-letter topic, consumer lag that keeps rising, and an ou
 | `audit` | Consumes events and stores the log |
 | `notification` | Email delivery |
 
-### Phase 3: household management
+### Phase 3: household management (built)
 
 - Meal planning and recipes (`shopping-meals`)
-- Home inventory, document storage, warranty and expiry reminders (`document-inventory`)
 - Notes and bookmarks (`notes`)
 
 ### Phase 4: advanced
@@ -997,7 +1002,7 @@ Mitigations: a monorepo, one shared starter, strict module boundaries, and build
 | Data | One MySQL schema per service, no cross-service joins |
 | Identity | Logto for identity, LifeHub database for permissions |
 | Repository | Monorepo with a Maven parent |
-| Service set | `identity-workspace`, `finance`, `planner`, `shopping-meals`, `document-inventory`, `notes`, `notification`, `audit` |
+| Service set | `identity-workspace`, `finance`, `planner`, `shopping-meals`, `notes`, `notification`, `audit` |
 | `lifehub-app` composition | The built `lifehub-web` plus Spring Cloud Gateway: token check and the route table in `application.yaml` |
 | Service discovery | Eureka, in `lifehub-service-registry`; routes use `lb://<service>` ([ADR 0011](deploy/docs/adr/0011-routing-in-app-with-eureka.md)) |
 | Gateway flavour | Spring Cloud Gateway, reactive (WebFlux) |

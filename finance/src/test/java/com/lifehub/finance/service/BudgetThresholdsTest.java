@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.time.ZoneId;
 
 import org.junit.jupiter.api.Test;
 
@@ -19,11 +20,18 @@ class BudgetThresholdsTest {
     }
 
     @Test
-    void periodsAreCalendarMonthsInUtc() {
-        YearMonth november = BudgetThresholds.period(Instant.parse("2026-11-30T23:59:59Z"));
-        assertThat(november).isEqualTo(YearMonth.of(2026, 11));
-        assertThat(BudgetThresholds.start(november)).isEqualTo(Instant.parse("2026-11-01T00:00:00Z"));
-        assertThat(BudgetThresholds.end(november)).isEqualTo(Instant.parse("2026-12-01T00:00:00Z"));
+    void periodsAreCalendarMonthsInTheWorkspacesTimezone() {
+        ZoneId london = ZoneId.of("Europe/London");
+        ZoneId lagos = ZoneId.of("Africa/Lagos");
+        Instant lateOnTheLastEvening = Instant.parse("2026-11-30T23:30:00Z");
+
+        assertThat(BudgetThresholds.period(lateOnTheLastEvening, london)).isEqualTo(YearMonth.of(2026, 11));
+        // 00:30 on 1 December in Lagos already counts towards December.
+        assertThat(BudgetThresholds.period(lateOnTheLastEvening, lagos)).isEqualTo(YearMonth.of(2026, 12));
+        assertThat(BudgetThresholds.start(YearMonth.of(2026, 12), lagos)).isEqualTo(Instant.parse("2026-11-30T23:00:00Z"));
+        // London is on summer time in July: the month starts at 23:00 UTC the day before.
+        assertThat(BudgetThresholds.start(YearMonth.of(2026, 7), london)).isEqualTo(Instant.parse("2026-06-30T23:00:00Z"));
+        assertThat(BudgetThresholds.end(YearMonth.of(2026, 11), london)).isEqualTo(Instant.parse("2026-12-01T00:00:00Z"));
     }
 
     @Test

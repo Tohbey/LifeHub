@@ -2,6 +2,7 @@ package com.lifehub.planner.model.entity;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -66,6 +67,24 @@ public class CalendarEvent extends AssignedIdEntity {
     @Column(name = "reminder_sent_at")
     private Instant reminderSentAt;
 
+    /** How often the event repeats, or null for a one-off event. */
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "recurrence_frequency")
+    private Frequency recurrenceFrequency;
+
+    /** Every N days, weeks, months or years; null for a one-off event. */
+    @Column(name = "recurrence_interval")
+    private Integer recurrenceInterval;
+
+    /** The last local day an occurrence may start on, or null for no end. */
+    @Column(name = "recurrence_until")
+    private LocalDate recurrenceUntil;
+
+    /** Start of the occurrence the next reminder is for (the event's own start for a one-off event). */
+    @Column(name = "next_occurrence_at")
+    private Instant nextOccurrenceAt;
+
     /** Active or cancelled. */
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.VARCHAR)
@@ -108,18 +127,39 @@ public class CalendarEvent extends AssignedIdEntity {
         this.updatedAt = now;
     }
 
-    /** Changes the time and reminder. A changed reminder time is sent again. */
+    /**
+     * Changes the time and reminder; the next reminder is for this start. A changed reminder time is sent again.
+     * For a recurring event, call {@link #moveReminderTo} afterwards with the next occurrence.
+     */
     public void schedule(Instant startsAt, Instant endsAt, Integer reminderMinutesBefore, Instant now) {
-        Instant newRemindAt = reminderMinutesBefore == null ? null
-                : startsAt.minus(Duration.ofMinutes(reminderMinutesBefore));
-        if (newRemindAt == null || !newRemindAt.equals(remindAt)) {
-            this.reminderSentAt = null;
-        }
         this.startsAt = startsAt;
         this.endsAt = endsAt;
         this.reminderMinutesBefore = reminderMinutesBefore;
-        this.remindAt = newRemindAt;
+        moveReminderTo(startsAt);
         this.updatedAt = now;
+    }
+
+    /** Makes the event repeat with this rule, or a one-off event when {@code frequency} is null. */
+    public void repeat(Frequency frequency, Integer interval, LocalDate until) {
+        this.recurrenceFrequency = frequency;
+        this.recurrenceInterval = frequency == null ? null : interval;
+        this.recurrenceUntil = frequency == null ? null : until;
+    }
+
+    /** Points the next reminder at this occurrence. A reminder time that changes is sent again. */
+    public void moveReminderTo(Instant occurrenceStart) {
+        Instant newRemindAt = reminderMinutesBefore == null || occurrenceStart == null ? null
+                : occurrenceStart.minus(Duration.ofMinutes(reminderMinutesBefore));
+        if (newRemindAt == null || !newRemindAt.equals(remindAt)) {
+            this.reminderSentAt = null;
+        }
+        this.nextOccurrenceAt = occurrenceStart;
+        this.remindAt = newRemindAt;
+    }
+
+    /** True for a recurring event. */
+    public boolean isRecurring() {
+        return recurrenceFrequency != null;
     }
 
     /** Cancels the event; no reminder is sent for it. */

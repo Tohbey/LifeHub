@@ -132,6 +132,26 @@ class LifehubApplicationTest {
                 .expectBody(String.class).value(body -> assertThat(body).contains("/openapi/identity-workspace"));
     }
 
+    @Test
+    void referenceDataListsPreferredCurrenciesAndTimezonesFirst() {
+        client.mutateWith(mockJwt()).get().uri("/api/v1/reference-data").exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.currencies[0].code").isEqualTo("GBP")
+                .jsonPath("$.currencies[0].common").isEqualTo(true)
+                .jsonPath("$.currencies[?(@.code == 'XAU')]").isEmpty()
+                .jsonPath("$.currencies[?(@.code == 'JPY')].name").isEqualTo("Japanese Yen")
+                .jsonPath("$.timezones[0].id").isEqualTo("Europe/London")
+                .jsonPath("$.timezones[?(@.id == 'UTC')].offset").isEqualTo("+00:00")
+                .jsonPath("$.timezones[?(@.id == 'EST')]").isEmpty();
+        assertThat(STUB_REQUESTS).isEmpty();
+    }
+
+    @Test
+    void referenceDataNeedsAToken() {
+        client.get().uri("/api/v1/reference-data").exchange().expectStatus().isUnauthorized();
+    }
+
     /** Starts an HTTP server that records each request and answers as identity-workspace. */
     private static HttpServer startStub() {
         try {

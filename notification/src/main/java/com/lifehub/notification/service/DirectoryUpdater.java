@@ -31,7 +31,8 @@ class DirectoryUpdater {
             }
             case "user.profile.updated" -> {
                 var p = reader.payload(event, ConsumedEvents.UserProfileUpdated.class);
-                directory.saveRecipient(p.userId(), p.displayName(), p.email());
+                // Only a verified address is ever mailed: anyone can type any address into their profile.
+                directory.saveRecipient(p.userId(), p.displayName(), p.emailVerified() ? p.email() : null);
             }
             case "household.created" -> {
                 var p = reader.payload(event, ConsumedEvents.HouseholdCreated.class);

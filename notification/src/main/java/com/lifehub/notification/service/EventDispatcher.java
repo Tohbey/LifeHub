@@ -28,7 +28,8 @@ import lombok.extern.slf4j.Slf4j;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Handles one event end to end, in one transaction: skip duplicates, update the directory, work out the
+ * Handles one event end to end, in one transaction: skip duplicates, fill in an unknown workspace, update the
+ * directory, work out the
  * notifications, apply each recipient's preferences, store them, and queue email deliveries.
  */
 @Service
@@ -40,6 +41,7 @@ public class EventDispatcher {
 
     private final ProcessedEvents processedEvents;
     private final DirectoryUpdater directoryUpdater;
+    private final DirectoryBackfill directoryBackfill;
     private final DirectoryRepository directory;
     private final NotificationRules rules;
     private final NotificationRepository notifications;
@@ -56,6 +58,7 @@ public class EventDispatcher {
             log.debug("Skipping duplicate event {}", event.eventId());
             return;
         }
+        directoryBackfill.ensureKnown(event.workspaceId());
         directoryUpdater.apply(event);
         for (NotificationDraft draft : rules.draftsFor(event, directory)) {
             deliver(draft, event.eventId());
@@ -82,7 +85,8 @@ public class EventDispatcher {
                 notification.markRead(true, now);
             }
         } else {
-            notification = notifications.save(new Notification(Ids.newId(), draft.userId(), draft.workspaceId(),
+            // saveAndFlush: an email delivery row may follow, written with plain SQL and referencing this row.
+            notification = notifications.saveAndFlush(new Notification(Ids.newId(), draft.userId(), draft.workspaceId(),
                     draft.type(), draft.title(), draft.body(), draft.link(), draft.groupKey(), eventId, now));
             if (!pref.inApp()) {
                 // Email only: keep the row for the email's content, but do not show it as unread in the app.

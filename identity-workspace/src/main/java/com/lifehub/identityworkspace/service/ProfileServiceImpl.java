@@ -72,7 +72,8 @@ class ProfileServiceImpl implements ProfileService {
         }
         if (!changed.isEmpty()) {
             events.publish(IdentityEvents.USER_PROFILE_UPDATED, null, userId,
-                    new IdentityEvents.UserProfileUpdated(userId, user.getDisplayName(), user.getEmail(), changed),
+                    new IdentityEvents.UserProfileUpdated(userId, user.getDisplayName(), user.getEmail(),
+                            user.isEmailVerified(), changed),
                     userId.toString());
         }
         return UserMapper.toDto(user);

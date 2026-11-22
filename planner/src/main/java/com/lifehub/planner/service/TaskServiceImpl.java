@@ -1,6 +1,7 @@
 package com.lifehub.planner.service;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -22,6 +23,7 @@ import com.lifehub.starter.events.DomainEventPublisher;
 import com.lifehub.starter.id.Ids;
 import com.lifehub.starter.membership.Membership;
 import com.lifehub.starter.membership.WorkspaceAccess;
+import com.lifehub.starter.membership.WorkspaceRole;
 import com.lifehub.starter.web.ApiException;
 import com.lifehub.starter.web.PageResponse;
 
@@ -30,6 +32,9 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 class TaskServiceImpl implements TaskService {
+
+    /** A due time this far in the past is still accepted, so a form opened a moment ago can be saved. */
+    static final Duration DUE_GRACE = Duration.ofMinutes(1);
 
     private final WorkspaceAccess access;
     private final TaskRepository tasks;
@@ -59,6 +64,7 @@ class TaskServiceImpl implements TaskService {
     public TaskDTO createTask(UUID workspaceId, CreateTaskRequest request) {
         Membership caller = access.require(workspaceId);
         requireMember(workspaceId, request.assigneeUserId());
+        requireNotPast(request.dueAt());
         Task task = tasks.save(new Task(Ids.newId(), workspaceId, request.title().strip(), blankToNull(request.description()),
                 request.assigneeUserId(), request.dueAt(), caller.userId(), clock.instant()));
 
@@ -84,6 +90,9 @@ class TaskServiceImpl implements TaskService {
                     request.description() != null ? blankToNull(request.description()) : task.getDescription(), now);
         }
         if (Boolean.TRUE.equals(request.clearDueAt()) || request.dueAt() != null) {
+            if (request.dueAt() != null && !request.dueAt().equals(task.getDueAt())) {
+                requireNotPast(request.dueAt());
+            }
             task.reschedule(Boolean.TRUE.equals(request.clearDueAt()) ? null : request.dueAt(), now);
         }
         UUID previousAssignee = task.getAssigneeUserId();
@@ -107,6 +116,20 @@ class TaskServiceImpl implements TaskService {
         return TaskMapper.toDto(task);
     }
 
+    /** Checks the caller created it or is an owner or admin, then deletes it and publishes task.deleted. */
+    @Override
+    @Transactional
+    public void deleteTask(UUID workspaceId, UUID taskId) {
+        Membership caller = access.require(workspaceId);
+        Task task = load(workspaceId, taskId);
+        if (!caller.userId().equals(task.getCreatedByUserId()) && !caller.role().isAtLeast(WorkspaceRole.ADMIN)) {
+            throw ApiException.forbidden("Only the person who created this task, or an admin, can delete it.");
+        }
+        tasks.delete(task);
+        events.publish(PlannerEvents.TASK_DELETED, workspaceId, caller.userId(),
+                new PlannerEvents.TaskDeleted(task.getId(), task.getTitle()));
+    }
+
     /** Loads a task of this workspace, or 404. */
     private Task load(UUID workspaceId, UUID taskId) {
         return tasks.findByIdAndWorkspaceId(taskId, workspaceId)
@@ -117,6 +140,13 @@ class TaskServiceImpl implements TaskService {
     private void requireMember(UUID workspaceId, UUID userId) {
         if (userId != null) {
             access.requireAllMembers(workspaceId, List.of(userId));
+        }
+    }
+
+    /** A new due time must not be in the past (a minute of grace allowed). */
+    private void requireNotPast(Instant dueAt) {
+        if (dueAt != null && dueAt.isBefore(clock.instant().minus(DUE_GRACE))) {
+            throw ApiException.badRequest("The due date cannot be in the past.");
         }
     }
 

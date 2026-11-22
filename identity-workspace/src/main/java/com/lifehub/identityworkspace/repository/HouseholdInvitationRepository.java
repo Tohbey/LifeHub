@@ -1,14 +1,18 @@
 package com.lifehub.identityworkspace.repository;
 
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
 import jakarta.persistence.LockModeType;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 
 import com.lifehub.identityworkspace.model.entity.HouseholdInvitation;
+import com.lifehub.identityworkspace.model.entity.InvitationStatus;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -20,4 +24,11 @@ public interface HouseholdInvitationRepository extends JpaRepository<HouseholdIn
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<HouseholdInvitation> findByTokenHash(String tokenHash);
+
+    /** Pages through a household's invitations with this status that expire after the given time. */
+    Page<HouseholdInvitation> findByHouseholdIdAndStatusAndExpiresAtAfter(UUID householdId, InvitationStatus status,
+            Instant after, Pageable pageable);
+
+    /** Finds an invitation only if it belongs to this household. */
+    Optional<HouseholdInvitation> findByIdAndHouseholdId(UUID id, UUID householdId);
 }

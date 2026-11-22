@@ -50,6 +50,11 @@
                 <artifactId>lifehub-starter-test</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.lifehub</groupId>
+                <artifactId>lifehub-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
 
             <dependency>
                 <groupId>com.fasterxml.uuid</groupId>

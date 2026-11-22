@@ -15,6 +15,7 @@ import com.lifehub.identityworkspace.service.LocalMembershipClient;
 import com.lifehub.starter.membership.InternalMembershipApi;
 import com.lifehub.starter.membership.InternalMembershipApi.MemberListResponse;
 import com.lifehub.starter.membership.InternalMembershipApi.MemberLookupResponse;
+import com.lifehub.starter.membership.InternalMembershipApi.WorkspaceInfoResponse;
 import com.lifehub.starter.web.ApiException;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -82,5 +83,25 @@ class InternalMembershipController {
                 .map(e -> new MemberListResponse.Member(e.getKey(), e.getValue()))
                 .toList();
         return new MemberListResponse(workspaceId, members);
+    }
+
+    /** Returns the workspace's name, settings and active members, or 404 when it does not exist. */
+    @Operation(summary = "Describe a workspace",
+            description = "Service-to-service. The workspace's type, name, timezone and currency (households only) and "
+                    + "its active members. Used for local-time budgets and calendars, and to rebuild directories.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "The workspace",
+                    content = @Content(schema = @Schema(implementation = WorkspaceInfoResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid service token",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "The service token lacks the membership:read permission",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "404", description = "No such workspace", content = @Content)
+    })
+    @GetMapping(InternalMembershipApi.WORKSPACE_PATH)
+    ResponseEntity<WorkspaceInfoResponse> workspace(@PathVariable UUID workspaceId) {
+        return memberships.findWorkspace(workspaceId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 }

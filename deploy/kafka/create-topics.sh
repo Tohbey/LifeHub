@@ -12,7 +12,7 @@ BOOTSTRAP="${BOOTSTRAP:-kafka:29092}"
 DAY_MS=86400000
 
 # One event topic per producer, 3 partitions, 14 days. Each gets a dead-letter topic, 1 partition, 30 days.
-EVENT_TOPICS=(identity.events finance.events task.events calendar.events shopping.events document.events)
+EVENT_TOPICS=(identity.events finance.events task.events calendar.events shopping.events)
 
 create() {
     local topic="$1" partitions="$2" retention_days="$3"

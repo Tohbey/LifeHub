@@ -10,6 +10,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -124,5 +125,25 @@ class TaskController {
     TaskDTO updateTask(@PathVariable UUID workspaceId, @PathVariable UUID taskId,
             @Valid @RequestBody UpdateTaskRequest request) {
         return taskService.updateTask(workspaceId, taskId, request);
+    }
+
+    /** DELETE /api/v1/workspaces/{id}/tasks/{taskId}: deletes a task. Returns 204. */
+    @Operation(summary = "Delete a task", description = "Only the person who created it, or an owner or admin.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Task deleted", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "You did not create this task and are not an admin",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "404", description = "Task or workspace not found",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "503",
+                    description = "Membership could not be checked right now; try again shortly",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    @DeleteMapping("/{taskId}")
+    ResponseEntity<Void> deleteTask(@PathVariable UUID workspaceId, @PathVariable UUID taskId) {
+        taskService.deleteTask(workspaceId, taskId);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -3,6 +3,7 @@ package com.lifehub.starter.membership;
 import java.net.http.HttpClient;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.ZoneId;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -97,6 +98,13 @@ public class MembershipAutoConfiguration {
     @ConditionalOnMissingBean
     WorkspaceAccess workspaceAccess(MembershipClient membershipClient) {
         return new WorkspaceAccess(membershipClient);
+    }
+
+    /** Provides the workspace timezone lookup, for local days and months. */
+    @Bean
+    @ConditionalOnMissingBean
+    WorkspaceTimezones workspaceTimezones(MembershipClient membershipClient, MembershipProperties properties) {
+        return new WorkspaceTimezones(membershipClient, ZoneId.of(properties.defaultTimezone()));
     }
 
     /** Builds an HTTP client with the same connect and read timeout. */

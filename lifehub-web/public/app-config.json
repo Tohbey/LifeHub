@@ -1,0 +1,5 @@
+{
+  "logtoEndpoint": "https://auth.homelab.dev",
+  "logtoAppId": "0tyqx7nx6kok4cnqf4x1l",
+  "apiResource": "https://api.lifehub.homelab.dev"
+}

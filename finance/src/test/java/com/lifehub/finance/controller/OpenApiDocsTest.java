@@ -26,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import com.lifehub.finance.service.TransactionService;
 import com.lifehub.finance.service.CategoryService;
 import com.lifehub.finance.service.BudgetService;
+import com.lifehub.finance.service.FinanceExportService;
 import com.lifehub.finance.service.FinanceSummaryService;
 
 import com.lifehub.starter.security.LifehubSecurityAutoConfiguration;
@@ -64,6 +65,9 @@ class OpenApiDocsTest {
 
     @MockitoBean
     FinanceSummaryService summaryService;
+
+    @MockitoBean
+    FinanceExportService exportService;
 
 
     @Test

@@ -24,6 +24,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.lifehub.identityworkspace.service.ProfileService;
+import com.lifehub.identityworkspace.service.EmailVerificationService;
 import com.lifehub.identityworkspace.service.HouseholdService;
 import com.lifehub.identityworkspace.service.InvitationService;
 import com.lifehub.identityworkspace.service.LocalMembershipClient;
@@ -58,6 +59,9 @@ class OpenApiDocsTest {
 
     @MockitoBean
     HouseholdService householdService;
+
+    @MockitoBean
+    EmailVerificationService emailVerificationService;
 
     @MockitoBean
     InvitationService invitationService;
@@ -97,7 +101,8 @@ class OpenApiDocsTest {
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
-        assertThat(docs).contains("\"/internal/v1/workspaces/{workspaceId}/members\"", "\"/internal/v1/users\"");
+        assertThat(docs).contains("\"/internal/v1/workspaces/{workspaceId}/members\"", "\"/internal/v1/users\"",
+                "\"/internal/v1/workspaces/{workspaceId}\"");
         assertThat(docs).doesNotContain("\"/api/v1/");
     }
 }

@@ -24,4 +24,7 @@ public interface TaskService {
 
     /** Changes a task; publishes task.assigned and task.completed when those happen. */
     TaskDTO updateTask(UUID workspaceId, UUID taskId, UpdateTaskRequest request);
+
+    /** Deletes a task; only its creator or an owner or admin may. Publishes task.deleted. */
+    void deleteTask(UUID workspaceId, UUID taskId);
 }
