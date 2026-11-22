@@ -1,0 +1,51 @@
+// LifeHub CI: builds and tests every service and the web app, then runs the Playwright suite against the
+// mocked backend. Needs an agent with JDK 21 and Docker (the integration tests start MySQL and Kafka with
+// Testcontainers). Node is downloaded by the Maven build, so the agent does not need its own.
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 45, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+    }
+
+    environment {
+        CI = 'true'
+        // Keep the Maven and npm downloads between builds.
+        MAVEN_OPTS = '-Dmaven.repo.local=.m2/repository'
+        npm_config_cache = "${WORKSPACE}/.npm"
+    }
+
+    stages {
+        stage('Build and unit tests') {
+            steps {
+                // Java tests, the Angular unit tests (lifehub-web's ng-test execution) and the packaged jars.
+                sh './mvnw -B clean install'
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Playwright') {
+            steps {
+                dir('lifehub-web') {
+                    // The Node and npm the Maven build installed, so the versions match.
+                    withEnv(["PATH+NODE=${WORKSPACE}/lifehub-web/target/node"]) {
+                        sh 'npx playwright install --with-deps chromium'
+                        sh 'npx playwright test'
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts allowEmptyArchive: true,
+                            artifacts: 'lifehub-web/playwright-report/**, lifehub-web/test-results/**'
+                }
+            }
+        }
+    }
+}

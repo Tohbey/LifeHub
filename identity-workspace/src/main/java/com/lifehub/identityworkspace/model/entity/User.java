@@ -1,6 +1,7 @@
 package com.lifehub.identityworkspace.model.entity;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -35,6 +36,10 @@ public class User extends AssignedIdEntity {
     @Column(name = "email")
     private String email;
 
+    /** When the current email was verified, or null while unverified (or when there is no email). */
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
     /** When the user first signed in. */
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -51,13 +56,32 @@ public class User extends AssignedIdEntity {
         this.updatedAt = now;
     }
 
-    /** Updates the profile. A null field is left unchanged; a blank one clears it. Email is lowercased. */
+    /** Marks the current email as verified. */
+    public void markEmailVerified(Instant now) {
+        this.emailVerifiedAt = now;
+        this.updatedAt = now;
+    }
+
+    /** True when there is an email and it has been verified. */
+    public boolean isEmailVerified() {
+        return email != null && emailVerifiedAt != null;
+    }
+
+    /**
+     * Updates the profile. A null field is left unchanged; a blank one clears it. Email is lowercased, and a new
+     * email is unverified until its owner opens the verification link.
+     */
     public void updateProfile(String displayName, String email, Instant now) {
         if (displayName != null) {
             this.displayName = displayName.isBlank() ? null : displayName.strip();
         }
         if (email != null) {
-            this.email = email.isBlank() ? null : email.strip().toLowerCase();
+            String newEmail = email.isBlank() ? null : email.strip().toLowerCase();
+            if (!Objects.equals(newEmail, this.email)) {
+                // A different address has to be verified again.
+                this.emailVerifiedAt = null;
+            }
+            this.email = newEmail;
         }
         this.updatedAt = now;
     }

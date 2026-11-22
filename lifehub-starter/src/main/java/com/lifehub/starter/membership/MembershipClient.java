@@ -25,4 +25,13 @@ public interface MembershipClient {
      * workspace (such as {@code /api/v1/me/notifications}). Empty if the user has never signed in.
      */
     Optional<UUID> findUserIdBySubject(String logtoSubject);
+
+    /**
+     * The display names of these LifeHub users, for showing people by name (for example in the audit log).
+     * Unknown IDs are left out; a user who never set a name maps to null.
+     */
+    Map<UUID, String> findDisplayNames(Collection<UUID> userIds);
+
+    /** The workspace's name, settings and active members; empty if it does not exist. */
+    Optional<InternalMembershipApi.WorkspaceInfoResponse> findWorkspace(UUID workspaceId);
 }

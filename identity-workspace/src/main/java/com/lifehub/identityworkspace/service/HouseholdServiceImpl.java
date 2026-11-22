@@ -25,9 +25,11 @@ import com.lifehub.identityworkspace.model.dto.CreateInvitationRequest;
 import com.lifehub.identityworkspace.model.dto.HouseholdDTO;
 import com.lifehub.identityworkspace.model.dto.InvitationDTO;
 import com.lifehub.identityworkspace.model.dto.MemberDTO;
+import com.lifehub.identityworkspace.model.dto.PendingInvitationDTO;
 import com.lifehub.identityworkspace.model.dto.UpdateHouseholdRequest;
 import com.lifehub.identityworkspace.model.entity.Household;
 import com.lifehub.identityworkspace.model.entity.HouseholdInvitation;
+import com.lifehub.identityworkspace.model.entity.InvitationStatus;
 import com.lifehub.identityworkspace.model.entity.MemberStatus;
 import com.lifehub.identityworkspace.model.entity.User;
 import com.lifehub.identityworkspace.model.entity.Workspace;
@@ -159,12 +161,39 @@ class HouseholdServiceImpl implements HouseholdService {
         HouseholdInvitation invitation = invitations.save(new HouseholdInvitation(Ids.newId(), householdId, email,
                 request.role(), InvitationTokenUtil.hash(token), actorId, now, now.plus(invitationTtl)));
 
-        UUID invitedUserId = users.findFirstByEmail(email).map(User::getId).orElse(null);
+        // Only a verified email identifies a user: anyone can type any address into their profile.
+        UUID invitedUserId = users.findFirstByEmailAndEmailVerifiedAtIsNotNull(email).map(User::getId).orElse(null);
 
         events.publish(IdentityEvents.MEMBER_INVITED, householdId, actorId, new IdentityEvents.MemberInvited(
                 householdId, invitation.getId(), email, invitedUserId, request.role(), invitation.getExpiresAt()));
 
         return InvitationMapper.toDto(invitation, token);
+    }
+
+    /** Requires owner or admin, then pages through invitations that can still be accepted. */
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<PendingInvitationDTO> getInvitations(String subject, UUID householdId, Pageable pageable) {
+        UUID actorId = currentUsers.resolve(subject).getId();
+        requireAdmin(requireMember(householdId, actorId), "Only owners and admins can see invitations.");
+        return PageResponse.of(invitations.findByHouseholdIdAndStatusAndExpiresAtAfter(householdId,
+                InvitationStatus.PENDING, clock.instant(), pageable), InvitationMapper::toPendingDto);
+    }
+
+    /** Requires owner or admin; only a pending invitation can be revoked. Publishes member.invitation.revoked. */
+    @Override
+    @Transactional
+    public void revokeInvitation(String subject, UUID householdId, UUID invitationId) {
+        UUID actorId = currentUsers.resolve(subject).getId();
+        requireAdmin(requireMemberForUpdate(householdId, actorId), "Only owners and admins can revoke invitations.");
+        HouseholdInvitation invitation = invitations.findByIdAndHouseholdId(invitationId, householdId)
+                .orElseThrow(() -> ApiException.notFound("Invitation not found."));
+        if (invitation.getStatus() != InvitationStatus.PENDING) {
+            throw ApiException.conflict("This invitation was already " + invitation.getStatus().name().toLowerCase() + ".");
+        }
+        invitation.revoke();
+        events.publish(IdentityEvents.INVITATION_REVOKED, householdId, actorId,
+                new IdentityEvents.InvitationRevoked(householdId, invitationId, invitation.getEmail()));
     }
 
     /** Checks the caller is a member, then pages through active members with their user details. */
@@ -282,6 +311,13 @@ class HouseholdServiceImpl implements HouseholdService {
     /** Loads the household's settings. */
     private Household household(UUID householdId) {
         return households.findById(householdId).orElseThrow();
+    }
+
+    /** Fails with 403 unless the member is an owner or admin. */
+    private static void requireAdmin(WorkspaceMember member, String reason) {
+        if (!member.getRole().isAtLeast(WorkspaceRole.ADMIN)) {
+            throw ApiException.forbidden(reason);
+        }
     }
 
     /** Turns a denied policy decision into a 403 with the policy's reason. */

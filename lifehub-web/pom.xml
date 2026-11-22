@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Angular PWA, packaged for lifehub-app. `./mvnw package` downloads Node into target/ (cached in ~/.m2),
+  runs `npm ci` and `ng build`, and puts the output under static/ in this jar. lifehub-app depends on the jar and
+  serves it at /. The project is still a normal Angular app: `npm start` and `npm run e2e` work without Maven.
+  Skip the frontend build with -Dlifehub.web.skip=true (the jar is then empty, and lifehub-app serves no UI).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.lifehub</groupId>
+        <artifactId>lifehub-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../lifehub-parent</relativePath>
+    </parent>
+
+    <artifactId>lifehub-web</artifactId>
+    <name>lifehub-web</name>
+
+    <properties>
+        <node.version>v22.23.4</node.version>
+        <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
+        <lifehub.web.skip>false</lifehub.web.skip>
+        <angular.output>${project.basedir}/dist/lifehub-web/browser</angular.output>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>${frontend-maven-plugin.version}</version>
+                <configuration>
+                    <installDirectory>${project.build.directory}</installDirectory>
+                    <nodeVersion>${node.version}</nodeVersion>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install-node</id>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${lifehub.web.skip}</skip>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm-ci</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${lifehub.web.skip}</skip>
+                            <arguments>ci --no-audit --no-fund</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>ng-build</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${lifehub.web.skip}</skip>
+                            <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                    <!-- The Angular unit tests (vitest), skipped with -DskipTests like the Java ones. -->
+                    <execution>
+                        <id>ng-test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${lifehub.web.skip}</skip>
+                            <skipTests>${skipTests}</skipTests>
+                            <arguments>test</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Puts the Angular build under static/ in the jar, where Spring Boot serves static resources from. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-angular-build</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${lifehub.web.skip}</skip>
+                            <outputDirectory>${project.build.outputDirectory}/static</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${angular.output}</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Deletes the Angular output on mvn clean, so a stale build is never packaged. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <configuration>
+                    <filesets>
+                        <fileset>
+                            <directory>${project.basedir}/dist</directory>
+                        </fileset>
+                    </filesets>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

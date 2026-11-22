@@ -1,7 +1,7 @@
 --liquibase formatted sql
 
 -- IDs are UUIDv7 in BINARY(16) (ADR 0004). Times are UTC in DATETIME(6).
--- Recipes and meal plans come in phase 3.
+-- Recipes and meal plans: 0002.
 
 --changeset shopping-meals:0001-1
 CREATE TABLE shopping_lists (

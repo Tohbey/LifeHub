@@ -60,7 +60,6 @@ Every event uses this envelope, defined once in `lifehub-starter`:
 | `task.events` | planner | 3 | 14 days |
 | `calendar.events` | planner | 3 | 14 days |
 | `shopping.events` | shopping-meals | 3 | 14 days |
-| `document.events` | document-inventory | 3 | 14 days |
 | `<topic>.dlt` | consumers | 1 | 30 days |
 
 Partition counts and retention are starting values for a single broker, set by the topic script in `deploy/kafka/`. Kafka is not the source of truth ([README, backups](../../README.md#backups)), so retention only needs to cover consumer downtime and replay.
@@ -78,10 +77,11 @@ Consumers: **N** = notification, **A** = audit. Audit consumes every event on ev
 | Type | v | Phase | Consumers | When |
 |---|---|---|---|---|
 | `user.created` | 1 | 1 | N, A | First login provisions a LifeHub user and personal workspace |
-| `user.profile.updated` | 1 | 2 | N, A | A user changes their display name or email |
+| `user.profile.updated` | 1 | 2 | N, A | A user changes their display name or email, or confirms their email |
 | `household.created` | 1 | 1 | N, A | A household and its shared workspace are created |
 | `household.updated` | 1 | 1 | A | Household name or settings change |
 | `member.invited` | 1 | 1 | N, A | An invitation is created |
+| `member.invitation.revoked` | 1 | 2 | A | An owner or admin revokes a pending invitation |
 | `member.added` | 1 | 1 | N, A | An invitation is accepted |
 | `member.removed` | 1 | 1 | N, A | A member is removed or leaves |
 | `member.role.changed` | 1 | 1 | N, A | A member's role changes |
@@ -91,7 +91,8 @@ Consumers: **N** = notification, **A** = audit. Audit consumes every event on ev
 { "userId": "…", "personalWorkspaceId": "…", "displayName": "Tobi" }
 
 // user.profile.updated (workspaceId: null, key: userId)
-{ "userId": "…", "displayName": "Tobi", "email": "tobi@example.com", "changedFields": ["email"] }
+{ "userId": "…", "displayName": "Tobi", "email": "tobi@example.com", "emailVerified": false,
+  "changedFields": ["email"] }   // changedFields: ["emailVerified"] when the user confirms the address
 
 // household.created
 { "householdId": "…", "name": "Fafowora Home", "ownerUserId": "…" }
@@ -103,6 +104,9 @@ Consumers: **N** = notification, **A** = audit. Audit consumes every event on ev
 { "householdId": "…", "invitationId": "…", "invitedEmail": "sam@example.com",
   "invitedUserId": null, "role": "MEMBER", "expiresAt": "2026-11-22T09:15:00Z" }
 
+// member.invitation.revoked
+{ "householdId": "…", "invitationId": "…", "invitedEmail": "sam@example.com" }
+
 // member.added
 { "householdId": "…", "userId": "…", "role": "MEMBER", "invitationId": "…" }
 
@@ -113,7 +117,7 @@ Consumers: **N** = notification, **A** = audit. Audit consumes every event on ev
 { "householdId": "…", "userId": "…", "previousRole": "MEMBER", "newRole": "ADMIN" }
 ```
 
-Notification keeps its own copy of who belongs to which workspace, built from `user.created`, `household.created`, `member.added`, `member.removed` and `member.role.changed`, so it can work out recipients without calling identity-workspace. It keeps each user's name and email from `user.created` and `user.profile.updated` for email delivery. The email is the one the user typed into their profile and is not verified.
+Notification keeps its own copy of who belongs to which workspace, built from `user.created`, `household.created`, `member.added`, `member.removed` and `member.role.changed`, so it can work out recipients without calling identity-workspace. It keeps each user's name from `user.created` and `user.profile.updated`, and their email only while `emailVerified` is true (a missing `emailVerified`, from an older event, counts as false), so an address nobody has proved they own is never mailed. A workspace it has never seen (its identity events are older than Kafka's 14-day retention) is filled in once from identity-workspace's internal API: the workspace, its members and their names.
 
 `invitedUserId` is set when the email already belongs to a LifeHub user, so notification can tell them in-app. Roles are `OWNER`, `ADMIN`, `MEMBER`.
 
@@ -155,6 +159,7 @@ Notification keeps its own copy of who belongs to which workspace, built from `u
 | `task.created` | 1 | 2 | A | A task is created |
 | `task.assigned` | 1 | 2 | N, A | A task gets a new assignee |
 | `task.completed` | 1 | 2 | N, A | A task is marked done |
+| `task.deleted` | 1 | 2 | A | The creator, an owner or an admin deletes a task |
 | `task.overdue` | 1 | 2 | N, A | Planner's scheduler finds an open task past its due time |
 
 ```jsonc
@@ -167,6 +172,9 @@ Notification keeps its own copy of who belongs to which workspace, built from `u
 
 // task.completed
 { "taskId": "…", "title": "Pay electricity bill", "completedByUserId": "…" }
+
+// task.deleted
+{ "taskId": "…", "title": "Pay electricity bill" }
 
 // task.overdue (actorUserId: null)
 { "taskId": "…", "title": "Pay electricity bill", "assigneeUserId": "…", "dueAt": "2026-11-20T18:00:00Z" }
@@ -184,7 +192,8 @@ Notification keeps its own copy of who belongs to which workspace, built from `u
 ```jsonc
 // calendar.event.created
 { "calendarEventId": "…", "title": "Parents' evening", "startsAt": "2026-11-25T17:30:00Z",
-  "endsAt": "2026-11-25T19:00:00Z", "allDay": false, "attendeeUserIds": ["…", "…"] }
+  "endsAt": "2026-11-25T19:00:00Z", "allDay": false, "attendeeUserIds": ["…", "…"],
+  "recurrence": { "frequency": "WEEKLY", "interval": 1, "until": "2027-06-30" } }   // null when it does not repeat
 
 // calendar.event.updated
 { "calendarEventId": "…", "title": "Parents' evening", "startsAt": "…", "endsAt": "…",
@@ -196,6 +205,8 @@ Notification keeps its own copy of who belongs to which workspace, built from `u
 // calendar.event.reminder.due (actorUserId: null)
 { "calendarEventId": "…", "title": "Parents' evening", "startsAt": "…", "attendeeUserIds": ["…"] }
 ```
+
+A recurring event is one event with a rule (`DAILY`, `WEEKLY`, `MONTHLY` or `YEARLY`, every `interval` units, optionally `until` a last day); occurrences are worked out in the workspace's timezone and are not stored or published one by one. `calendar.event.reminder.due` is published for each occurrence, with that occurrence's `startsAt`.
 
 Events in a personal workspace are published like any other. Notification only ever notifies members of the event's workspace, so a private appointment cannot leak to a household.
 
@@ -216,31 +227,6 @@ Events in a personal workspace are published like any other. Notification only e
 
 Notification batches these per list (for example one notification per list per few minutes) rather than one per item. That is a notification concern and does not change the events.
 
-### document.events
-
-| Type | v | Phase | Consumers | When |
-|---|---|---|---|---|
-| `document.uploaded` | 1 | 3 | A | A document is stored |
-| `document.deleted` | 1 | 3 | A | A document is soft deleted |
-| `document.expiring` | 1 | 3 | N, A | A document's expiry date is within the reminder window |
-| `warranty.expiring` | 1 | 3 | N, A | An inventory item's warranty is within the reminder window |
-
-```jsonc
-// document.uploaded
-{ "documentId": "…", "title": "Passport", "contentType": "application/pdf", "sizeBytes": 482113, "expiresOn": "2031-03-02" }
-
-// document.deleted
-{ "documentId": "…" }
-
-// document.expiring (actorUserId: null)
-{ "documentId": "…", "title": "Passport", "expiresOn": "2031-03-02", "daysRemaining": 30 }
-
-// warranty.expiring (actorUserId: null)
-{ "inventoryItemId": "…", "name": "Washing machine", "warrantyExpiresOn": "2027-01-10", "daysRemaining": 30 }
-```
-
-The file itself never goes through Kafka.
-
 ### Not yet catalogued
 
-`notes`, savings goals, recurring transactions and meal plans publish nothing yet. Add their events here before writing the producer.
+`notes` and meal plans publish nothing: nobody needs to be told about them. Adding a recipe's ingredients to a list publishes one ordinary `shopping.item.added` per ingredient, which notification groups per list. Savings goals and recurring transactions are not built yet. Add events here before writing the producer.

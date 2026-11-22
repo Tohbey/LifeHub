@@ -5,8 +5,11 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -60,7 +63,7 @@ class SecurityChainsTest {
 
     @Test
     void apiWithATokenReachesTheController() throws Exception {
-        when(profileService.getCurrentUser("user-1")).thenReturn(new UserDTO(UUID.randomUUID(), null, null, null));
+        when(profileService.getCurrentUser("user-1")).thenReturn(new UserDTO(UUID.randomUUID(), null, null, false, null));
         mvc.perform(get("/api/v1/me").with(jwt().jwt(j -> j.subject("user-1")))).andExpect(status().isOk());
     }
 
@@ -98,6 +101,22 @@ class SecurityChainsTest {
         mvc.perform(get("/internal/v1/users").param("sub", "user-1").with(jwt())).andExpect(status().isForbidden());
         mvc.perform(get("/internal/v1/users").param("sub", "user-1").with(scope())).andExpect(status().isOk());
         mvc.perform(get("/internal/v1/users").param("sub", "nobody").with(scope())).andExpect(status().isNotFound());
+    }
+
+    @Test
+    void internalNameLookupNeedsTheMembershipScopeAndIsCapped() throws Exception {
+        UUID alice = UUID.randomUUID();
+        when(memberships.findDisplayNames(List.of(alice))).thenReturn(Map.of(alice, "Alice"));
+
+        mvc.perform(get("/internal/v1/users").param("userId", alice.toString()).with(jwt())).andExpect(status().isForbidden());
+        mvc.perform(get("/internal/v1/users").param("userId", alice.toString()).with(scope()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.names." + alice).value("Alice"));
+        var tooMany = get("/internal/v1/users").with(scope());
+        for (int i = 0; i < 101; i++) {
+            tooMany.param("userId", UUID.randomUUID().toString());
+        }
+        mvc.perform(tooMany).andExpect(status().isBadRequest());
     }
 
     @Test

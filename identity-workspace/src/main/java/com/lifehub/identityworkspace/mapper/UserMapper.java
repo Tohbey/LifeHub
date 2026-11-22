@@ -11,6 +11,7 @@ public final class UserMapper {
 
     /** Maps a user entity to the profile DTO. */
     public static UserDTO toDto(User user) {
-        return new UserDTO(user.getId(), user.getDisplayName(), user.getEmail(), user.getCreatedAt());
+        return new UserDTO(user.getId(), user.getDisplayName(), user.getEmail(), user.isEmailVerified(),
+                user.getCreatedAt());
     }
 }

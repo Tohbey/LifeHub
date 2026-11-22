@@ -44,7 +44,7 @@ class HttpMembershipClientTest {
                 .waitDurationInOpenState(Duration.ofMinutes(1))
                 .build());
         client = new HttpMembershipClient(builder.build(), breaker,
-                new MembershipProperties(BASE, Duration.ofSeconds(30), Duration.ofSeconds(1)));
+                new MembershipProperties(BASE, Duration.ofSeconds(30), Duration.ofSeconds(1), "Europe/London"));
     }
 
     @Test
@@ -120,6 +120,39 @@ class HttpMembershipClientTest {
         server.expect(once(), requestTo(BASE + "/internal/v1/users?sub=sub-2")).andRespond(withStatus(HttpStatus.NOT_FOUND));
 
         assertThat(client.findUserIdBySubject("sub-2")).isEmpty();
+    }
+
+    @Test
+    void looksUpDisplayNamesOnceAndServesRepeatsFromTheCache() {
+        UUID other = Ids.newId();
+        UUID unnamed = Ids.newId();
+        server.expect(once(), requestTo(BASE + "/internal/v1/users?userId=" + userId + "&userId=" + other + "&userId=" + unnamed))
+                .andRespond(withSuccess("""
+                        {"names":{"%s":"Alice","%s":"Bob","%s":null}}
+                        """.formatted(userId, other, unnamed), MediaType.APPLICATION_JSON));
+
+        assertThat(client.findDisplayNames(List.of(userId, other, unnamed)))
+                .containsEntry(userId, "Alice").containsEntry(other, "Bob").containsEntry(unnamed, null);
+        // All three are cached now, including the user without a name: no second request.
+        assertThat(client.findDisplayNames(List.of(other, unnamed))).containsEntry(other, "Bob").containsKey(unnamed);
+        server.verify();
+    }
+
+    @Test
+    void readsAWorkspaceAndTreatsNotFoundAsAbsent() {
+        server.expect(once(), requestTo(BASE + "/internal/v1/workspaces/" + workspaceId))
+                .andRespond(withSuccess("""
+                        {"workspaceId":"%s","type":"HOUSEHOLD","name":"Home","timezone":"Africa/Lagos","defaultCurrency":"NGN",
+                         "members":[{"userId":"%s","role":"OWNER"}]}
+                        """.formatted(workspaceId, userId), MediaType.APPLICATION_JSON));
+        UUID missing = Ids.newId();
+        server.expect(once(), requestTo(BASE + "/internal/v1/workspaces/" + missing)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThat(client.findWorkspace(workspaceId)).get().extracting(InternalMembershipApi.WorkspaceInfoResponse::timezone)
+                .isEqualTo("Africa/Lagos");
+        assertThat(client.findWorkspace(workspaceId)).isPresent();
+        assertThat(client.findWorkspace(missing)).isEmpty();
+        server.verify();
     }
 
     private String lookupUrl(String sub) {

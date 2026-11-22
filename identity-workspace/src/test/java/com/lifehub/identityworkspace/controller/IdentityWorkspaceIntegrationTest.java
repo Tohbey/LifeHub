@@ -214,6 +214,50 @@ class IdentityWorkspaceIntegrationTest {
     }
 
     @Test
+    void adminsListAndRevokePendingInvitationsAndARevokedLinkStopsWorking() throws Exception {
+        String alice = newSubject();
+        String bob = newSubject();
+        String householdId = createHousehold(alice);
+        String token = body(mvc.perform(post("/api/v1/households/" + householdId + "/invitations").with(user(alice))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"sam@example.com\",\"role\":\"MEMBER\"}"))
+                .andExpect(status().isCreated())).get("token").asString();
+
+        String invitationId = body(mvc.perform(get("/api/v1/households/" + householdId + "/invitations").with(user(alice)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalItems").value(1))
+                .andExpect(jsonPath("$.items[0].email").value("sam@example.com"))
+                .andExpect(jsonPath("$.items[0].token").doesNotExist()))
+                .get("items").get(0).get("id").asString();
+
+        mvc.perform(delete("/api/v1/households/" + householdId + "/invitations/" + invitationId).with(user(alice)))
+                .andExpect(status().isNoContent());
+        mvc.perform(delete("/api/v1/households/" + householdId + "/invitations/" + invitationId).with(user(alice)))
+                .andExpect(status().isConflict());
+        mvc.perform(post("/api/v1/invitations/" + token + "/accept").with(user(bob))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/v1/households/" + householdId + "/invitations").with(user(alice)))
+                .andExpect(jsonPath("$.totalItems").value(0));
+        assertThat(eventTypes(householdId)).contains("member.invitation.revoked");
+    }
+
+    @Test
+    void anUnverifiedEmailNeverMatchesAnInvitationToAUser() throws Exception {
+        String alice = newSubject();
+        String mallory = newSubject();
+        // Mallory types Alice's address into her own profile, but cannot verify it.
+        mvc.perform(patch("/api/v1/me").with(user(mallory)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"victim@example.com\"}")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.emailVerified").value(false));
+        String householdId = createHousehold(alice);
+        mvc.perform(post("/api/v1/households/" + householdId + "/invitations").with(user(alice))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"victim@example.com\",\"role\":\"MEMBER\"}"))
+                .andExpect(status().isCreated());
+
+        String envelope = jdbc.sql("SELECT envelope FROM outbox WHERE event_type = 'member.invited' AND message_key = ?")
+                .param(householdId).query(String.class).single();
+        assertThat(json.readTree(envelope).get("payload").get("invitedUserId").isNull()).isTrue();
+    }
+
+    @Test
     void householdEndpointsDoNotReachPersonalWorkspaces() throws Exception {
         String alice = newSubject();
         String personalId = body(mvc.perform(get("/api/v1/me/workspaces").with(user(alice))))

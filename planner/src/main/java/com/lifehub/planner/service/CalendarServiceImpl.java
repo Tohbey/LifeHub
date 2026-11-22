@@ -3,14 +3,18 @@ package com.lifehub.planner.service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.lifehub.planner.mapper.CalendarEventMapper;
 import com.lifehub.planner.model.dto.CalendarEventDTO;
 import com.lifehub.planner.model.dto.CreateCalendarEventRequest;
+import com.lifehub.planner.model.dto.RecurrenceDTO;
 import com.lifehub.planner.model.dto.UpdateCalendarEventRequest;
 import com.lifehub.planner.model.entity.CalendarEvent;
 import com.lifehub.planner.model.event.PlannerEvents;
@@ -28,6 +33,7 @@ import com.lifehub.starter.id.Ids;
 import com.lifehub.starter.membership.Membership;
 import com.lifehub.starter.membership.WorkspaceAccess;
 import com.lifehub.starter.membership.WorkspaceRole;
+import com.lifehub.starter.membership.WorkspaceTimezones;
 import com.lifehub.starter.web.ApiException;
 import com.lifehub.starter.web.PageResponse;
 
@@ -39,11 +45,17 @@ class CalendarServiceImpl implements CalendarService {
 
     static final Duration DEFAULT_RANGE = Duration.ofDays(31);
     static final Duration MAX_RANGE = Duration.ofDays(400);
+    /** A start this far in the past is still accepted, so a form opened a moment ago can be saved. */
+    static final Duration START_GRACE = Duration.ofMinutes(1);
+    /** At most this many series are expanded for one range, and at most this many occurrences returned. */
+    static final int MAX_SERIES = 500;
+    static final int MAX_OCCURRENCES = 2_000;
 
     private final WorkspaceAccess access;
     private final CalendarEventRepository calendarEvents;
     private final AttendeeRepository attendees;
     private final DomainEventPublisher events;
+    private final WorkspaceTimezones zones;
     private final Clock clock;
 
     /** Checks membership, reads one page and loads the page's attendees in one query. */
@@ -57,9 +69,28 @@ class CalendarServiceImpl implements CalendarService {
         if (!start.isBefore(end) || Duration.between(start, end).compareTo(MAX_RANGE) > 0) {
             throw ApiException.badRequest("'from' must be before 'to', at most 400 days apart.");
         }
-        Page<CalendarEvent> page = calendarEvents.findOverlapping(workspaceId, start, end, includeCancelled, pageable);
-        Map<UUID, List<UUID>> byEvent = attendees.findAll(page.map(CalendarEvent::getId).getContent());
-        return PageResponse.of(page, e -> CalendarEventMapper.toDto(e, byEvent.getOrDefault(e.getId(), List.of())));
+        ZoneId zone = zones.zoneOf(workspaceId);
+        List<CalendarEvent> series = calendarEvents.findInRange(workspaceId, start, end,
+                LocalDate.ofInstant(start, zone).minusDays(1), includeCancelled, PageRequest.of(0, MAX_SERIES));
+        Map<UUID, List<UUID>> byEvent = attendees.findAll(series.stream().map(CalendarEvent::getId).toList());
+
+        // One entry per occurrence: a one-off event is its own only occurrence.
+        List<CalendarEventDTO> occurrences = new ArrayList<>();
+        for (CalendarEvent e : series) {
+            List<UUID> people = byEvent.getOrDefault(e.getId(), List.of());
+            if (!e.isRecurring()) {
+                occurrences.add(CalendarEventMapper.toDto(e, people));
+                continue;
+            }
+            for (RecurrenceCalculator.Occurrence o : RecurrenceCalculator.between(e.getStartsAt(), e.getEndsAt(),
+                    rule(e), zone, start, end, MAX_OCCURRENCES)) {
+                occurrences.add(CalendarEventMapper.toDto(e, people, o.start(), o.end()));
+            }
+        }
+        occurrences.sort(Comparator.comparing(CalendarEventDTO::startsAt).thenComparing(CalendarEventDTO::id));
+        int from0 = (int) Math.min(pageable.getOffset(), occurrences.size());
+        int to0 = Math.min(from0 + pageable.getPageSize(), occurrences.size());
+        return PageResponse.of(new PageImpl<>(occurrences.subList(from0, to0), pageable, occurrences.size()), o -> o);
     }
 
     /** Checks membership, then loads the event from this workspace only. */
@@ -76,17 +107,26 @@ class CalendarServiceImpl implements CalendarService {
     public CalendarEventDTO createEvent(UUID workspaceId, CreateCalendarEventRequest request) {
         Membership caller = access.require(workspaceId);
         requireValidTimes(request.startsAt(), request.endsAt());
+        requireNotPast(request.startsAt());
+        ZoneId zone = zones.zoneOf(workspaceId);
+        requireValidRecurrence(request.recurrence(), request.startsAt(), zone);
         List<UUID> attendeeIds = distinct(request.attendeeUserIds());
         requireMembers(workspaceId, attendeeIds);
 
-        CalendarEvent event = calendarEvents.save(new CalendarEvent(Ids.newId(), workspaceId, request.title().strip(),
+        // saveAndFlush, not save: the attendee rows are written with plain SQL and reference this row through a
+        // foreign key, so it must be in the database first (JPA would otherwise insert it only at commit).
+        CalendarEvent event = calendarEvents.saveAndFlush(new CalendarEvent(Ids.newId(), workspaceId, request.title().strip(),
                 blankToNull(request.description()), blankToNull(request.location()), request.startsAt(),
                 request.endsAt(), request.allDay(), request.reminderMinutesBefore(), caller.userId(), clock.instant()));
+        if (request.recurrence() != null) {
+            // The first occurrence is the start itself, which is not in the past, so the reminder stays on it.
+            event.repeat(request.recurrence().frequency(), request.recurrence().interval(), request.recurrence().until());
+        }
         attendees.replace(event.getId(), attendeeIds);
 
         events.publish(PlannerEvents.CALENDAR_EVENT_CREATED, workspaceId, caller.userId(),
                 new PlannerEvents.CalendarEventCreated(event.getId(), event.getTitle(), event.getStartsAt(),
-                        event.getEndsAt(), event.isAllDay(), attendeeIds));
+                        event.getEndsAt(), event.isAllDay(), attendeeIds, request.recurrence()));
         return CalendarEventMapper.toDto(event, attendeeIds);
     }
 
@@ -128,10 +168,26 @@ class CalendarServiceImpl implements CalendarService {
         Integer reminder = Boolean.TRUE.equals(request.clearReminder()) ? null
                 : request.reminderMinutesBefore() != null ? request.reminderMinutesBefore() : event.getReminderMinutesBefore();
         requireValidTimes(startsAt, endsAt);
+        if (!startsAt.equals(event.getStartsAt())) {
+            requireNotPast(startsAt);
+        }
+        ZoneId zone = zones.zoneOf(workspaceId);
+        RecurrenceDTO before = CalendarEventMapper.recurrence(event);
+        RecurrenceDTO after = Boolean.TRUE.equals(request.stopRepeating()) ? null
+                : request.recurrence() != null ? request.recurrence() : before;
+        requireValidRecurrence(after, startsAt, zone);
         addIfChanged(changed, "startsAt", event.getStartsAt(), startsAt);
         addIfChanged(changed, "endsAt", event.getEndsAt(), endsAt);
         addIfChanged(changed, "reminderMinutesBefore", event.getReminderMinutesBefore(), reminder);
+        addIfChanged(changed, "recurrence", before, after);
         event.schedule(startsAt, endsAt, reminder, now);
+        event.repeat(after == null ? null : after.frequency(), after == null ? null : after.interval(),
+                after == null ? null : after.until());
+        if (event.isRecurring()) {
+            // The series may have started long ago: the next reminder is for the next occurrence from now on.
+            event.moveReminderTo(RecurrenceCalculator.nextStartOnOrAfter(event.getStartsAt(), rule(event), zone, now)
+                    .orElse(null));
+        }
 
         List<UUID> attendeeIds = currentAttendees;
         if (request.attendeeUserIds() != null) {
@@ -155,6 +211,26 @@ class CalendarServiceImpl implements CalendarService {
     private CalendarEvent load(UUID workspaceId, UUID eventId) {
         return calendarEvents.findByIdAndWorkspaceId(eventId, workspaceId)
                 .orElseThrow(() -> ApiException.notFound("Event not found."));
+    }
+
+    /** A new start must not be in the past (a minute of grace allowed). */
+    private void requireNotPast(Instant startsAt) {
+        if (startsAt.isBefore(clock.instant().minus(START_GRACE))) {
+            throw ApiException.badRequest("An event cannot start in the past.");
+        }
+    }
+
+    /** A repeat rule's last day cannot be before the first occurrence's day. */
+    private static void requireValidRecurrence(RecurrenceDTO recurrence, Instant startsAt, ZoneId zone) {
+        if (recurrence != null && recurrence.until() != null
+                && recurrence.until().isBefore(LocalDate.ofInstant(startsAt, zone))) {
+            throw ApiException.badRequest("A repeating event cannot end before it starts.");
+        }
+    }
+
+    /** The event's repeat rule, for the calculator. */
+    static RecurrenceCalculator.Rule rule(CalendarEvent e) {
+        return new RecurrenceCalculator.Rule(e.getRecurrenceFrequency(), e.getRecurrenceInterval(), e.getRecurrenceUntil());
     }
 
     /** An event must end after it starts. */

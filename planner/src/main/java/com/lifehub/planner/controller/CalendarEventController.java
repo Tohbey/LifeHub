@@ -67,13 +67,13 @@ class CalendarEventController {
 
     /** POST /api/v1/workspaces/{id}/events: adds an event. Returns 201. */
     @Operation(summary = "Add a calendar event",
-            description = "Attendees must be members. An optional reminder is sent the given number of minutes before "
-                    + "the start.")
+            description = "Attendees must be members, and the event cannot start in the past. An optional reminder "
+                    + "is sent the given number of minutes before each occurrence; add a recurrence to repeat it.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "201", description = "Event added",
                     content = @Content(schema = @Schema(implementation = CalendarEventDTO.class))),
             @ApiResponse(responseCode = "400",
-                    description = "Invalid request, an end before the start, or an attendee who is not a member",
+                    description = "Invalid request, a start in the past, an end before the start, or an attendee who is not a member",
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
             @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
@@ -117,7 +117,7 @@ class CalendarEventController {
             @ApiResponse(responseCode = "200", description = "Event updated",
                     content = @Content(schema = @Schema(implementation = CalendarEventDTO.class))),
             @ApiResponse(responseCode = "400",
-                    description = "Invalid request, an end before the start, or an attendee who is not a member",
+                    description = "Invalid request, a start in the past, an end before the start, or an attendee who is not a member",
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
             @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
                     content = @Content(schema = @Schema(implementation = ProblemDetail.class))),

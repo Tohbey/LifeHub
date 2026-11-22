@@ -19,7 +19,8 @@ public final class ConsumedEvents {
     public record UserCreated(UUID userId, UUID personalWorkspaceId, String displayName) {
     }
 
-    public record UserProfileUpdated(UUID userId, String displayName, String email) {
+    /** {@code emailVerified} is false when missing (older events), so an unverified address is never mailed. */
+    public record UserProfileUpdated(UUID userId, String displayName, String email, boolean emailVerified) {
     }
 
     public record HouseholdCreated(UUID householdId, String name, UUID ownerUserId) {

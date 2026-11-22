@@ -92,6 +92,15 @@ services:
       SERVER_PORT: 8086
     healthcheck: *healthcheck
 
+  notes:
+    <<: *service
+    image: lifehub/notes:${LIFEHUB_VERSION:-latest}
+    build: ../notes
+    env_file: ./env/notes.env
+    environment:
+      SERVER_PORT: 8088
+    healthcheck: *healthcheck
+
   # The only LifeHub container behind Nginx Proxy Manager: forward the proxy host to lifehub-app:8089, with
   # buffering off for /api/v1/me/notifications/stream (server-sent events).
   lifehub-app:

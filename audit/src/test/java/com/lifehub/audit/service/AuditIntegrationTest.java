@@ -1,5 +1,6 @@
 package com.lifehub.audit.service;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -9,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Instant;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -76,13 +78,17 @@ class AuditIntegrationTest {
                 {"eventId":"%s","type":"task.created","version":1,"occurredAt":"%s","workspaceId":"%s",
                  "actorUserId":null,"payload":{"taskId":"%s","title":"Bins"}}
                 """.formatted(Ids.newId(), Instant.now(), household, Ids.newId());
+        UUID owner = Ids.newId();
+        when(membershipClient.findDisplayNames(any())).thenReturn(Map.of(owner, "Alice"));
+        event = event.replace("\"actorUserId\":null", "\"actorUserId\":\"" + owner + "\"");
         recorder.record("task.events", event);
         recorder.record("task.events", event);
 
         mvc.perform(get("/api/v1/workspaces/" + household + "/audit").with(jwt().jwt(j -> j.subject("owner"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalItems").value(1))
-                .andExpect(jsonPath("$.items[0].payload.title").value("Bins"));
+                .andExpect(jsonPath("$.items[0].payload.title").value("Bins"))
+                .andExpect(jsonPath("$.items[0].actorName").value("Alice"));
         mvc.perform(get("/api/v1/workspaces/" + household + "/audit").with(jwt().jwt(j -> j.subject("member"))))
                 .andExpect(status().isForbidden());
         mvc.perform(get("/api/v1/workspaces/" + household + "/audit").with(jwt().jwt(j -> j.subject("stranger"))))

@@ -8,7 +8,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.lifehub.finance.model.dto.BudgetDTO;
 import com.lifehub.finance.model.dto.CreateBudgetRequest;
+import com.lifehub.finance.model.dto.UpdateBudgetRequest;
 import com.lifehub.finance.service.BudgetService;
 import com.lifehub.starter.web.PageResponse;
 
@@ -82,5 +86,43 @@ class BudgetController {
     @ResponseStatus(HttpStatus.CREATED)
     BudgetDTO createBudget(@PathVariable UUID workspaceId, @Valid @RequestBody CreateBudgetRequest request) {
         return budgetService.createBudget(workspaceId, request);
+    }
+
+    /** PATCH /api/v1/workspaces/{id}/budgets/{budgetId}: changes the monthly limit. Owners and admins only. */
+    @Operation(summary = "Change a budget's limit",
+            description = "Owners and admins only. This month's 80% and 100% alerts can fire again against the new limit.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Budget changed",
+                    content = @Content(schema = @Schema(implementation = BudgetDTO.class))),
+            @ApiResponse(responseCode = "400", description = "Invalid request data",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "Only owners and admins can change budgets",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "404", description = "Budget or workspace not found",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    @PatchMapping("/{budgetId}")
+    BudgetDTO updateBudget(@PathVariable UUID workspaceId, @PathVariable UUID budgetId,
+            @Valid @RequestBody UpdateBudgetRequest request) {
+        return budgetService.updateBudget(workspaceId, budgetId, request);
+    }
+
+    /** DELETE /api/v1/workspaces/{id}/budgets/{budgetId}: deletes a budget. Returns 204. */
+    @Operation(summary = "Delete a budget", description = "Owners and admins only. Spending is not affected.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Budget deleted", content = @Content),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "403", description = "Only owners and admins can delete budgets",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class))),
+            @ApiResponse(responseCode = "404", description = "Budget or workspace not found",
+                    content = @Content(schema = @Schema(implementation = ProblemDetail.class)))
+    })
+    @DeleteMapping("/{budgetId}")
+    ResponseEntity<Void> deleteBudget(@PathVariable UUID workspaceId, @PathVariable UUID budgetId) {
+        budgetService.deleteBudget(workspaceId, budgetId);
+        return ResponseEntity.noContent().build();
     }
 }

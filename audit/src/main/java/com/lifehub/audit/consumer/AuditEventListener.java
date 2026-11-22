@@ -17,7 +17,7 @@ class AuditEventListener {
 
     /** Appends the record to the audit log. */
     @KafkaListener(id = "audit", topics = {
-            "identity.events", "finance.events", "task.events", "calendar.events", "shopping.events", "document.events" })
+            "identity.events", "finance.events", "task.events", "calendar.events", "shopping.events" })
     void onEvent(ConsumerRecord<String, String> record) {
         recorder.record(record.topic(), record.value());
     }

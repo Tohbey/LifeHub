@@ -4,13 +4,13 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
 
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 
-/** Budget periods (calendar months in UTC) and the thresholds that trigger an alert. */
+/** Budget periods (calendar months in the workspace's timezone) and the thresholds that trigger an alert. */
 @NoArgsConstructor(access = AccessLevel.PRIVATE)
 public final class BudgetThresholds {
 
@@ -25,19 +25,19 @@ public final class BudgetThresholds {
                 .toList();
     }
 
-    /** The month (UTC) an instant falls in. */
-    public static YearMonth period(Instant instant) {
-        return YearMonth.from(instant.atZone(ZoneOffset.UTC));
+    /** The month an instant falls in, in this timezone. */
+    public static YearMonth period(Instant instant, ZoneId zone) {
+        return YearMonth.from(instant.atZone(zone));
     }
 
-    /** The first moment of a month, UTC. */
-    public static Instant start(YearMonth month) {
-        return month.atDay(1).atStartOfDay(ZoneOffset.UTC).toInstant();
+    /** The first moment of a month in this timezone. */
+    public static Instant start(YearMonth month, ZoneId zone) {
+        return month.atDay(1).atStartOfDay(zone).toInstant();
     }
 
-    /** The first moment after a month, UTC. */
-    public static Instant end(YearMonth month) {
-        return start(month.plusMonths(1));
+    /** The first moment after a month in this timezone. */
+    public static Instant end(YearMonth month, ZoneId zone) {
+        return start(month.plusMonths(1), zone);
     }
 
     /** The last day of a month. */

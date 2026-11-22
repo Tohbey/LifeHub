@@ -103,8 +103,7 @@ class ShoppingIntegrationTest {
                 .andExpect(jsonPath("$.totalItems").value(0));
         mvc.perform(delete("/api/v1/shopping-items/" + itemId).with(user("alice"))).andExpect(status().isNoContent());
 
-        assertThat(jdbc.sql("SELECT event_type FROM outbox ORDER BY created_at, id").query(String.class).list())
-                .containsExactly("shopping.item.added", "shopping.item.purchased");
+        assertThat(outboxFor(listId)).containsExactly("shopping.item.added", "shopping.item.purchased");
     }
 
     @Test
@@ -119,6 +118,55 @@ class ShoppingIntegrationTest {
                 .andExpect(status().isNotFound()).andReturn().getResponse().getContentAsString();
         assertThat(json.readTree(existing).get("detail")).isEqualTo(json.readTree(missing).get("detail"));
         assertThat(List.of(existing)).isNotEmpty();
+    }
+
+    @Test
+    void aRecipesIngredientsGoOnAListAndItCanBePlanned() throws Exception {
+        String recipeId = id(mvc.perform(post("/api/v1/workspaces/" + household + "/recipes").with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"name":"Jollof rice","servings":4,"ingredients":[
+                          {"name":"Rice","quantity":"500 g"},{"name":"Tomatoes","quantity":"6"}]}
+                        """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.ingredients[1].name").value("Tomatoes"))
+                .andReturn().getResponse().getContentAsString());
+        String listId = id(mvc.perform(post("/api/v1/workspaces/" + household + "/shopping-lists").with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Saturday shop\"}"))
+                .andReturn().getResponse().getContentAsString());
+
+        mvc.perform(post("/api/v1/workspaces/" + household + "/recipes/" + recipeId + "/shopping-list").with(user("alice"))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"shoppingListId\":\"" + listId + "\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$[0].name").value("Rice"))
+                .andExpect(jsonPath("$[0].note").value("For Jollof rice"));
+        assertThat(outboxFor(listId)).containsExactly("shopping.item.added", "shopping.item.added");
+
+        mvc.perform(post("/api/v1/workspaces/" + household + "/meals").with(user("alice"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"date\":\"2026-11-21\",\"slot\":\"DINNER\",\"recipeId\":\"" + recipeId + "\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.title").value("Jollof rice"));
+        mvc.perform(post("/api/v1/workspaces/" + household + "/meals").with(user("alice"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"date\":\"2026-11-21\",\"slot\":\"BREAKFAST\",\"title\":\"Pancakes\"}"))
+                .andExpect(status().isCreated());
+
+        mvc.perform(delete("/api/v1/workspaces/" + household + "/recipes/" + recipeId).with(user("alice")))
+                .andExpect(status().isNoContent());
+        mvc.perform(get("/api/v1/workspaces/" + household + "/meals").param("from", "2026-11-21").param("to", "2026-11-21")
+                        .with(user("alice")))
+                .andExpect(jsonPath("$[0].title").value("Pancakes"))
+                .andExpect(jsonPath("$[1].title").value("Jollof rice"))
+                .andExpect(jsonPath("$[1].recipeId").value(org.hamcrest.Matchers.nullValue()));
+        mvc.perform(get("/api/v1/workspaces/" + household + "/meals").param("from", "2026-01-01").param("to", "2026-12-31")
+                        .with(user("alice")))
+                .andExpect(status().isBadRequest());
+    }
+
+    /** The outbox events about one list, oldest first. */
+    private List<String> outboxFor(String listId) {
+        return jdbc.sql("SELECT event_type FROM outbox WHERE envelope LIKE :list ORDER BY created_at, id")
+                .param("list", "%" + listId + "%").query(String.class).list();
     }
 
     /** The "id" field of a JSON response. */

@@ -92,6 +92,11 @@ public class HouseholdInvitation extends AssignedIdEntity {
         return status == InvitationStatus.PENDING && now.isBefore(expiresAt);
     }
 
+    /** Withdraws a pending invitation, so its link stops working. */
+    public void revoke() {
+        this.status = InvitationStatus.REVOKED;
+    }
+
     /** Records that this user accepted the invitation, so it cannot be used again. */
     public void accept(UUID userId, Instant now) {
         this.status = InvitationStatus.ACCEPTED;

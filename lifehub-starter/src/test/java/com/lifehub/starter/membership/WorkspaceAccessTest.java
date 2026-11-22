@@ -46,6 +46,16 @@ class WorkspaceAccessTest {
         public Optional<UUID> findUserIdBySubject(String subject) {
             return memberships.values().stream().findFirst().map(Membership::userId);
         }
+
+        @Override
+        public Map<UUID, String> findDisplayNames(Collection<UUID> userIds) {
+            return Map.of();
+        }
+
+        @Override
+        public Optional<InternalMembershipApi.WorkspaceInfoResponse> findWorkspace(UUID workspaceId) {
+            return Optional.empty();
+        }
     });
 
     @BeforeEach

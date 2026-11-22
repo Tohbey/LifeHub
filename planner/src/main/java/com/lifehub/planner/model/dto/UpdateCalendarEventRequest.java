@@ -4,13 +4,15 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 /**
  * Fields left out are unchanged. {@code attendeeUserIds} replaces the attendees. {@code clearReminder} removes
- * the reminder. {@code cancelled: true} cancels the event; a cancelled event cannot be changed.
+ * the reminder. {@code cancelled: true} cancels the event; a cancelled event cannot be changed. {@code recurrence}
+ * replaces the repeat rule and {@code stopRepeating} makes it a one-off event. Changes apply to the whole series.
  */
 public record UpdateCalendarEventRequest(
         @Size(min = 1, max = 200) String title,
@@ -22,5 +24,7 @@ public record UpdateCalendarEventRequest(
         @PositiveOrZero @Max(40320) Integer reminderMinutesBefore,
         Boolean clearReminder,
         @Size(max = 50) List<UUID> attendeeUserIds,
-        Boolean cancelled) {
+        Boolean cancelled,
+        @Valid RecurrenceDTO recurrence,
+        Boolean stopRepeating) {
 }

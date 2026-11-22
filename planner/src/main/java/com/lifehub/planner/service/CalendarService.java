@@ -16,7 +16,10 @@ import com.lifehub.starter.web.PageResponse;
  */
 public interface CalendarService {
 
-    /** Pages through events overlapping [from, to); defaults to the next 31 days. */
+    /**
+     * Pages through events overlapping [from, to), the next 31 days by default. A recurring event appears once
+     * per occurrence, with that occurrence's times.
+     */
     PageResponse<CalendarEventDTO> getEvents(UUID workspaceId, Instant from, Instant to, boolean includeCancelled,
             Pageable pageable);
 

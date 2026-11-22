@@ -19,3 +19,7 @@ lifehub-web/.angular/
 
 # Private CA certificates mounted into containers (deploy/certs/README.md)
 deploy/certs/*.pem
+
+# Playwright output
+lifehub-web/playwright-report/
+lifehub-web/test-results/

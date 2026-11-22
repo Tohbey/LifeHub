@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -151,6 +152,38 @@ class PlannerIntegrationTest {
 
         assertThat(outbox()).containsExactly("calendar.event.created", "calendar.event.reminder.due",
                 "calendar.event.updated", "calendar.event.cancelled");
+    }
+
+    @Test
+    void aWeeklyEventIsListedOncePerOccurrenceAndPastStartsAreRefused() throws Exception {
+        Instant start = Instant.now().plusSeconds(3600);
+        mvc.perform(post(path("/events")).with(user("alice")).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"title":"Football","startsAt":"%s","endsAt":"%s","recurrence":{"frequency":"WEEKLY","interval":1}}
+                        """.formatted(start, start.plusSeconds(3600))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.recurrence.frequency").value("WEEKLY"));
+
+        mvc.perform(get(path("/events")).param("from", start.minusSeconds(60).toString())
+                        .param("to", start.plusSeconds(22 * 86400).toString()).with(user("bob")))
+                .andExpect(jsonPath("$.totalItems").value(4));
+
+        mvc.perform(post(path("/events")).with(user("alice")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"Late\",\"startsAt\":\"%s\",\"endsAt\":\"%s\"}"
+                        .formatted(Instant.now().minusSeconds(7200), Instant.now().minusSeconds(3600))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void onlyTheCreatorOrAnAdminDeletesATask() throws Exception {
+        String taskId = json.readTree(mvc.perform(post(path("/tasks")).with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"title\":\"Recycling\"}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asString();
+
+        mvc.perform(delete(path("/tasks/" + taskId)).with(user("bob"))).andExpect(status().isForbidden());
+        mvc.perform(delete(path("/tasks/" + taskId)).with(user("alice"))).andExpect(status().isNoContent());
+        mvc.perform(get(path("/tasks/" + taskId)).with(user("alice"))).andExpect(status().isNotFound());
+        assertThat(outbox()).contains("task.deleted");
     }
 
     /** A path under the test household. */

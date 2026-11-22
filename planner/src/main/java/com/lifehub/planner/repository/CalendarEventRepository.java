@@ -1,6 +1,7 @@
 package com.lifehub.planner.repository;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -8,7 +9,6 @@ import java.util.UUID;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.QueryHint;
 
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -26,22 +26,41 @@ public interface CalendarEventRepository extends JpaRepository<CalendarEvent, UU
 
     @Query("""
             select e from CalendarEvent e
-            where e.workspaceId = :workspaceId and e.endsAt > :from and e.startsAt < :to
+            where e.workspaceId = :workspaceId
               and (:includeCancelled = true or e.status = com.lifehub.planner.model.entity.EventStatus.ACTIVE)
+              and ((e.recurrenceFrequency is null and e.endsAt > :from and e.startsAt < :to)
+                or (e.recurrenceFrequency is not null and e.startsAt < :to
+                    and (e.recurrenceUntil is null or e.recurrenceUntil >= :fromDay)))
+            order by e.startsAt
             """)
-    /** Pages through events that overlap [from, to). */
-    Page<CalendarEvent> findOverlapping(UUID workspaceId, Instant from, Instant to, boolean includeCancelled,
-            Pageable pageable);
+    /**
+     * One-off events that overlap [from, to), and recurring series that may have an occurrence in it (they are
+     * expanded in the service). {@code fromDay} is a day before {@code from}, to be safe across timezones.
+     */
+    List<CalendarEvent> findInRange(UUID workspaceId, Instant from, Instant to, LocalDate fromDay,
+            boolean includeCancelled, Pageable limit);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
     @Query("""
             select e from CalendarEvent e
             where e.status = com.lifehub.planner.model.entity.EventStatus.ACTIVE
-              and e.reminderSentAt is null and e.remindAt <= :now and e.startsAt > :now
+              and e.reminderSentAt is null and e.remindAt <= :now and e.nextOccurrenceAt > :now
             order by e.remindAt
             limit 100
             """)
-    /** Active events whose reminder is due and not yet sent, still in the future, locked for this transaction. */
+    /** Active events whose next reminder is due and not yet sent, for an occurrence still in the future, locked. */
     List<CalendarEvent> lockDueReminders(Instant now);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "-2"))
+    @Query("""
+            select e from CalendarEvent e
+            where e.status = com.lifehub.planner.model.entity.EventStatus.ACTIVE
+              and e.recurrenceFrequency is not null and e.nextOccurrenceAt <= :now
+            order by e.nextOccurrenceAt
+            limit 100
+            """)
+    /** Recurring series whose next occurrence has already passed (for example while planner was down), locked. */
+    List<CalendarEvent> lockStaleSeries(Instant now);
 }

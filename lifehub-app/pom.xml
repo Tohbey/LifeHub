@@ -20,6 +20,12 @@
     <name>lifehub-app</name>
 
     <dependencies>
+        <!-- The built PWA (static/ on the classpath), served at /. -->
+        <dependency>
+            <groupId>com.lifehub</groupId>
+            <artifactId>lifehub-web</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>

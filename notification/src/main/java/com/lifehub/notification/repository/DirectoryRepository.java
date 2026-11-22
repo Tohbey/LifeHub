@@ -42,6 +42,14 @@ public class DirectoryRepository implements Directory {
                 .update();
     }
 
+    /** True once anything is known about the workspace (from an event or a backfill). */
+    public boolean knowsWorkspace(UUID workspaceId) {
+        return jdbc.sql("SELECT COUNT(*) FROM directory_workspaces WHERE id = :id")
+                .param("id", Ids.toBytes(workspaceId))
+                .query(Long.class)
+                .single() > 0;
+    }
+
     /** Records a membership as active with this role, or marks it inactive when {@code role} is null. */
     public void saveMember(UUID workspaceId, UUID userId, String role) {
         if (role == null) {

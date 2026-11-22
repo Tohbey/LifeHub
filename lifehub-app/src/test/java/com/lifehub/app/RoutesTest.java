@@ -50,11 +50,16 @@ class RoutesTest {
             "/api/v1/shopping-lists/1/items,                shopping-meals",
             "/openapi/finance,                              openapi-finance",
             "/openapi/audit,                                openapi-audit",
-            "/api/v1/documents/1/download,                  document-inventory",
+            W + "/meals,                                    shopping-meals",
+            W + "/recipes/1/shopping-list,                  shopping-meals",
+            W + "/bookmarks,                                notes",
+            W + "/tags,                                     notes",
+            "/openapi/notes,                                openapi-notes",
             W + "/notes,                                    notes",
             W + "/audit,                                    audit",
             "/internal/v1/workspaces/1/members,             NONE",
             W + "/unknown,                                  NONE",
+            W + "/documents,                                NONE",
             "/finance,                                      NONE",
     })
     void routesToTheOwningService(String path, String expected) {

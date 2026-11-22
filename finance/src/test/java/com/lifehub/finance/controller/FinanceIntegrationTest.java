@@ -161,6 +161,50 @@ class FinanceIntegrationTest {
                 .andExpect(jsonPath("$.currencies[0].expenseByCategory[0].name").value("Food"));
     }
 
+    @Test
+    void categoriesAndBudgetsCanBeChangedAndAnUnusedCategoryDeleted() throws Exception {
+        String used = body(mvc.perform(post(path("/finance/categories")).with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"EXPENSE\",\"name\":\"Fun\"}"))
+                .andExpect(status().isCreated())).get("id").asString();
+        String unused = body(mvc.perform(post(path("/finance/categories")).with(user("alice"))
+                .contentType(MediaType.APPLICATION_JSON).content("{\"type\":\"EXPENSE\",\"name\":\"Spare\"}"))
+                .andExpect(status().isCreated())).get("id").asString();
+        String budget = body(mvc.perform(post(path("/budgets")).with(user("alice")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"categoryId\":\"%s\",\"monthlyLimit\":50,\"currency\":\"GBP\"}".formatted(used)))
+                .andExpect(status().isCreated())).get("id").asString();
+
+        mvc.perform(patch(path("/finance/categories/" + used)).with(user("bob")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Leisure\"}")).andExpect(status().isForbidden());
+        mvc.perform(patch(path("/finance/categories/" + used)).with(user("alice")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"Leisure\"}")).andExpect(jsonPath("$.name").value("Leisure"));
+        mvc.perform(delete(path("/finance/categories/" + used)).with(user("alice"))).andExpect(status().isConflict());
+        mvc.perform(delete(path("/finance/categories/" + unused)).with(user("alice"))).andExpect(status().isNoContent());
+
+        mvc.perform(patch(path("/budgets/" + budget)).with(user("alice")).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"monthlyLimit\":75}")).andExpect(jsonPath("$.monthlyLimit").value(75));
+        mvc.perform(delete(path("/budgets/" + budget)).with(user("alice"))).andExpect(status().isNoContent());
+        mvc.perform(delete(path("/finance/categories/" + used)).with(user("alice"))).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void exportsTransactionsAsCsvWithNamesAndWithoutFormulas() throws Exception {
+        when(membershipClient.findDisplayNames(any())).thenReturn(Map.of(alice, "Alice", bob, "Bob"));
+        mvc.perform(post(path("/transactions")).with(user("alice")).contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {"type":"EXPENSE","description":"=HYPERLINK(1)","amount":20,"currency":"GBP",
+                         "occurredAt":"%s","splits":[{"userId":"%s","amount":10},{"userId":"%s","amount":10}]}
+                        """.formatted(java.time.Instant.now().minusSeconds(60), alice, bob)))
+                .andExpect(status().isCreated());
+
+        String csv = mvc.perform(get(path("/finance/export")).with(user("bob")))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header()
+                        .string("Content-Disposition", org.hamcrest.Matchers.startsWith("attachment")))
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(csv).contains("Date,Type,Description,Category,Amount,Currency,Paid by,Splits")
+                .contains("'=HYPERLINK(1)").contains("Alice: 10.00; Bob: 10.00");
+    }
+
     /** A path under the test household. */
     private String path(String suffix) {
         return "/api/v1/workspaces/" + household + suffix;

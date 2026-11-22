@@ -1,12 +1,20 @@
 package com.lifehub.starter.web;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 import org.springframework.data.core.PropertyReferenceException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 import com.lifehub.starter.membership.MembershipUnavailableException;
@@ -20,6 +28,26 @@ import lombok.extern.slf4j.Slf4j;
 @RestControllerAdvice
 @Slf4j
 public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+
+    /**
+     * Returns 400 for a request body that fails Bean Validation, with an {@code errors} property naming each
+     * invalid field, for example {@code {"amount": "must be greater than 0"}}. Only field names and constraint
+     * messages are returned, never the rejected values.
+     */
+    @Override
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException ex,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        Map<String, String> errors = new LinkedHashMap<>();
+        for (FieldError error : ex.getBindingResult().getFieldErrors()) {
+            errors.putIfAbsent(error.getField(), error.getDefaultMessage());
+        }
+        ex.getBindingResult().getGlobalErrors()
+                .forEach(error -> errors.putIfAbsent(error.getObjectName(), error.getDefaultMessage()));
+        ProblemDetail body = ex.getBody();
+        body.setDetail("Some fields are invalid.");
+        body.setProperty("errors", errors);
+        return handleExceptionInternal(ex, body, headers, status, request);
+    }
 
     /** Returns an ApiException as a problem with its own status and detail. */
     @ExceptionHandler(ApiException.class)

@@ -20,6 +20,7 @@ SERVICES=(
     "finance:lifehub_finance:SELECT, INSERT, UPDATE, DELETE"
     "planner:lifehub_planner:SELECT, INSERT, UPDATE, DELETE"
     "shopping-meals:lifehub_shopping:SELECT, INSERT, UPDATE, DELETE"
+    "notes:lifehub_notes:SELECT, INSERT, UPDATE, DELETE"
     # The audit log is append-only: its runtime user can never change or delete history.
     "audit:lifehub_audit:SELECT, INSERT"
 )

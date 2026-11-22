@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -23,6 +24,7 @@ import com.lifehub.finance.repository.CategoryRepository;
 import com.lifehub.finance.repository.TransactionRepository;
 import com.lifehub.finance.repository.TransactionTotal;
 import com.lifehub.starter.membership.WorkspaceAccess;
+import com.lifehub.starter.membership.WorkspaceTimezones;
 import com.lifehub.starter.web.ApiException;
 
 import lombok.RequiredArgsConstructor;
@@ -34,6 +36,7 @@ class FinanceSummaryServiceImpl implements FinanceSummaryService {
     private final WorkspaceAccess access;
     private final TransactionRepository transactions;
     private final CategoryRepository categories;
+    private final WorkspaceTimezones zones;
     private final Clock clock;
 
     /** Checks membership, sums by currency, type and category, and names the categories. */
@@ -41,9 +44,10 @@ class FinanceSummaryServiceImpl implements FinanceSummaryService {
     @Transactional(readOnly = true)
     public FinanceSummaryDTO getSummary(UUID workspaceId, Instant from, Instant to) {
         access.require(workspaceId);
-        YearMonth month = BudgetThresholds.period(clock.instant());
-        Instant start = from != null ? from : BudgetThresholds.start(month);
-        Instant end = to != null ? to : BudgetThresholds.end(month);
+        ZoneId zone = zones.zoneOf(workspaceId);
+        YearMonth month = BudgetThresholds.period(clock.instant(), zone);
+        Instant start = from != null ? from : BudgetThresholds.start(month, zone);
+        Instant end = to != null ? to : BudgetThresholds.end(month, zone);
         if (!start.isBefore(end)) {
             throw ApiException.badRequest("'from' must be before 'to'.");
         }
